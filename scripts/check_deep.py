@@ -546,22 +546,51 @@ COVER_EN = [
 APPROVAL_LINE = re.compile(
     r"ได้รับการตรวจสอบและอนุมัติ|was approved as partial fulfillment|has been approved",
     re.I)
+
+# บรรทัดที่ "เคยมี" ในเทมเพลตรุ่นก่อน แต่ **ถูกตัดออกแล้ว** ใน rev.2024/rev.2023
+#
+# ตรวจสองทิศทางถึงจะครบ: ขาดบรรทัดที่ต้องมี = ปกไม่ครบ · มีบรรทัดที่เทมเพลตตัดออกแล้ว
+# = ปกไม่ตรงรุ่น (มักเกิดจากก๊อปปกจากเล่มรุ่นพี่มาใช้). เดิมตรวจแค่ทิศทางแรก
+# เล่มที่แปะบรรทัดเก่าไว้จึงผ่านฉลุย
+#
+# เพิ่มรายการใหม่ได้เมื่อยืนยันแล้วว่า **ไม่มีใน references/templates/ ทั้ง 3 ไฟล์**
+# (ใช้ grep นับให้ได้ 0 ทั้งสามไฟล์ก่อนเสมอ)
+COVER_DEPRECATED = [
+    (r"ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์", "ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์"),
+    (r"COPYRIGHT OF THAMMASAT UNIVERSITY", "COPYRIGHT OF THAMMASAT UNIVERSITY"),
+]
 FRONT_STOP = re.compile(r"^\s*(บทคัดย่อ|ABSTRACT)\b", re.I)
 
 
-def front_matter_text(doc):
-    """ข้อความส่วนหน้า (ก่อนบทคัดย่อ) รวมข้อความในตาราง — ปก/หน้าอนุมัติอยู่ในนี้"""
-    lines = []
-    for para in doc.paragraphs:
+def front_matter_lines(doc):
+    """[(ดัชนีย่อหน้า, ข้อความหนึ่งบรรทัด)] ของส่วนหน้า (ก่อนบทคัดย่อ) รวมข้อความในตาราง
+
+    แยกทีละ **บรรทัด** ไม่ใช่ทีละย่อหน้า เพราะบล็อกบนปกหลายอันเป็นย่อหน้าเดียวที่ขึ้น
+    บรรทัดใหม่ด้วย Shift+Enter — ถ้าคืนทั้งย่อหน้า คำค้นที่ยกไปให้ผู้อ่านจะยาวเกินและ
+    ค้นใน Word ไม่เจอเพราะคร่อมบรรทัด
+    """
+    out = []
+    for i, para in enumerate(doc.paragraphs):
         text = _squash(para.text)
         if FRONT_STOP.match(text):
             break
-        lines.append(text)
+        for line in re.split(r"[\r\n\v]", para.text or ""):
+            line = _squash(line)
+            if line:
+                out.append((i, line))
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                lines.append(_squash(cell.text))
-    return "\n".join(l for l in lines if l)
+                for line in re.split(r"[\r\n\v]", cell.text or ""):
+                    line = _squash(line)
+                    if line:
+                        out.append((None, line))
+    return out
+
+
+def front_matter_text(doc):
+    """ข้อความส่วนหน้าทั้งก้อน — ใช้เทียบว่ามีบรรทัดที่ต้องมีครบไหม"""
+    return "\n".join(line for _, line in front_matter_lines(doc))
 
 
 def check_cover_elements(doc, pages, out):
@@ -590,6 +619,26 @@ def check_cover_elements(doc, pages, out):
                          "องค์ประกอบหน้าปกยึดตาม `ตัวอย่างการพิมพ์ส่วนประกอบของวิทยานิพนธ์` "
                          "ของหอสมุด — ขาดบรรทัดใดบรรทัดหนึ่งถือว่าปกไม่ครบและถูกตีกลับ",
                          "หน้าปกใน", f"เพิ่ม{name}"))
+
+    # --- บรรทัดที่เทมเพลตรุ่นปัจจุบันตัดออกแล้ว แต่ยังค้างอยู่ในเล่ม -----------
+    seen_dep = set()
+    for para_index, line in front_matter_lines(doc):
+        for pattern, canonical in COVER_DEPRECATED:
+            if canonical in seen_dep or not re.search(pattern, line, re.I):
+                continue
+            # ต้องเป็น "บรรทัดนั้นทั้งบรรทัด" ไม่ใช่ข้อความที่พูดถึงบรรทัดนี้ในประโยคยาว
+            # (เอกสารคู่มือ/รายงานที่อ้างถึงกฎข้อนี้ต้องไม่ถูกนับว่าเป็นหน้าปกที่ผิด)
+            if len(line) > len(canonical) + 15:
+                continue
+            seen_dep.add(canonical)
+            out.append(F("major", "หน้าปก",
+                         f"หน้าปกมีบรรทัด “{line[:60]}” ซึ่งเทมเพลตรุ่นปัจจุบันตัดออกแล้ว",
+                         "เทมเพลตทางการ rev.2024 (ไทย/อังกฤษ) และ rev.2023 (English Times) "
+                         f"ไม่มีบรรทัด “{canonical}” บนหน้าปก — บรรทัดนี้เป็นของเทมเพลตรุ่นเก่า "
+                         "มักติดมาจากการก๊อปหน้าปกจากเล่มรุ่นก่อน",
+                         f"para {para_index}" if para_index is not None else "หน้าปกใน",
+                         f"ลบบรรทัด “{canonical}” ออกจากหน้าปก "
+                         "(ถ้าคณะ/หลักสูตรกำหนดให้มี ให้ยืนยันกับหอสมุดก่อน)"))
 
     if not APPROVAL_LINE.search(blob):
         out.append(F("major", "หน้าอนุมัติ",

@@ -116,6 +116,18 @@ for name, _ in cd.COVER_TH + cd.COVER_EN:
           "cover: เอาบรรทัดลิขสิทธิ์/COPYRIGHT กลับเข้ามาเป็นเกณฑ์ — "
           "เทมเพลตทางการ 3 ไฟล์ไม่มีบรรทัดนี้เลย")
 
+# --- ตรวจสองทิศทาง: ขาดบรรทัดที่ต้องมี + มีบรรทัดที่เทมเพลตตัดออกแล้ว ----------
+DEP = [c for _, c in cd.COVER_DEPRECATED]
+check("ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์" in DEP and "COPYRIGHT OF THAMMASAT UNIVERSITY" in DEP,
+      "cover: บรรทัดที่เทมเพลตตัดออกแล้วหายไปจากรายการตรวจ — เล่มที่ก๊อปปกรุ่นเก่ามาจะผ่านฉลุย")
+
+# ประโยคที่ "พูดถึง" บรรทัดนี้ (เช่นในคู่มือหรือรายงานผลตรวจ) ต้องไม่ถูกนับว่าเป็นหน้าปกผิด
+MENTIONS = "ปี พ.ศ. ต้องเว้นวรรค/ขึ้นบรรทัดใหม่ก่อน 'ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์' ตามเกณฑ์"
+for pattern, canonical in cd.COVER_DEPRECATED:
+    if re.search(pattern, MENTIONS, re.I):
+        check(len(MENTIONS) > len(canonical) + 15,
+              "cover-deprecated: ประโยคที่อ้างถึงบรรทัดนี้ต้องยาวพอที่จะถูกกรองออก")
+
 # แม่แบบหัวข้อต้องตรงกับเทมเพลต
 check(cd.HEADING_STYLE_BY_LEVEL[2] == "TU_Main Heading"
       and cd.HEADING_STYLE_BY_LEVEL[3] == "TU_Sub-heading 1"
