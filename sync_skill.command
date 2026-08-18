@@ -25,12 +25,22 @@ copy_to() {
   local dest="$1"
   mkdir -p "$dest" || return 1
   if command -v rsync >/dev/null 2>&1; then
+    # กันไฟล์วิทยานิพนธ์จริงและรายงานผลตรวจไม่ให้ตามไปอยู่ในโฟลเดอร์สกิล —
+    # เป็นข้อมูลนักศึกษา (ชื่อ-นามสกุล รหัส เนื้อหาที่ยังไม่เผยแพร่) และหนักเป็นสิบ MB
+    # สกิลต้องการแค่ SKILL.md + scripts + references เท่านั้น
     rsync -a --delete \
       --exclude '.DS_Store' --exclude '__pycache__' --exclude 'work/' \
       --exclude '*.pyc' --exclude 'sync_skill.command' \
+      --exclude '.git/' --exclude 'Template-Recheck-Skill*/' \
+      --exclude 'ไฟล์สำหรับทดสอบ/' --exclude 'ผลทดสอบ*/' \
+      --exclude 'อ้างอิงคำเรียกประเภทงาน/' --exclude 'ตัวอย่างการเขียนและวางเนื้อหา/' \
+      --exclude '*.docx' \
       "$SRC"/ "$dest"/
   else
+    echo "  ⚠ ไม่มี rsync — คัดลอกทั้งโฟลเดอร์ ให้ลบโฟลเดอร์ไฟล์นักศึกษาที่ปลายทางเอง"
     cp -R "$SRC"/. "$dest"/
+    rm -rf "$dest/ไฟล์สำหรับทดสอบ" "$dest"/ผลทดสอบ* "$dest/.git" \
+           "$dest"/Template-Recheck-Skill* "$dest/อ้างอิงคำเรียกประเภทงาน" 2>/dev/null
   fi
 }
 
