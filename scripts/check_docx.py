@@ -919,23 +919,29 @@ def check_template_integrity(doc, F, profile):
             correct="มีสไตล์ TU_Chapter / TU_Paragraph_Normal / TU_Main Heading / TU_Sub-heading ครบ"))
     # ตรวจทุก TU style ที่รู้เกณฑ์ แต่ flag เฉพาะค่าที่ระบุชัดแล้วผิด;
     # ค่า None อาจ inherit จาก base style/docDefaults จึงไม่ควรถูกตัดสินว่าผิด.
-    body_ascii = 12.0 if profile == "english-times" else 16.0
+    # ค่าทั้งหมดสกัดจากเทมเพลตทางการ 3 ไฟล์ (ดู references/templates/*.md)
+    # ข้อสังเกตที่พลาดง่าย: ในโปรไฟล์ Times rev.2023 สไตล์ "หัวข้อ" ยังใช้ TH Sarabun
+    # ขนาด CS 16 อยู่ (เพราะหัวข้อไทยต้องอ่านออก) แต่สไตล์ "ย่อหน้าเนื้อความ" เปลี่ยน
+    # เป็น Times ทั้ง ascii และ CS ที่ 12pt — ถ้าใช้ 16 เหมือนโปรไฟล์อื่นจะฟ้องผิดทุกเล่ม
+    times = profile == "english-times"
+    body_ascii = 12.0 if times else 16.0
+    body_cs = 12.0 if times else 16.0          # ย่อหน้าเนื้อความ
+    head_cs = 16.0                             # หัวข้อ — CS 16 ทุกโปรไฟล์
     expected = {
-        "TU_Chapter": {"sz": 14.0 if profile == "english-times" else 18.0,
-                       "szCs": 18.0, "bold": True},
-        "TU_Paragraph_Normal": {"sz": body_ascii, "szCs": 16.0,
+        "TU_Chapter": {"sz": 14.0 if times else 18.0, "szCs": 18.0, "bold": True},
+        "TU_Paragraph_Normal": {"sz": body_ascii, "szCs": body_cs,
                                 "bold": False, "firstLine": 0.8},
-        "TU_Sub-heading 1": {"sz": body_ascii, "szCs": 16.0,
+        "TU_Sub-heading 1": {"sz": body_ascii, "szCs": head_cs,
                              "bold": True, "firstLine": 0.8},
-        "TU_Sub-heading 2": {"sz": body_ascii, "szCs": 16.0,
+        "TU_Sub-heading 2": {"sz": body_ascii, "szCs": head_cs,
                              "bold": True, "firstLine": 1.1},
-        "TU_Sub-heading 3": {"sz": body_ascii, "szCs": 16.0,
+        "TU_Sub-heading 3": {"sz": body_ascii, "szCs": head_cs,
                              "bold": True, "firstLine": 1.4},
-        "TU_Para_Sub-heading 1": {"sz": body_ascii, "szCs": 16.0,
+        "TU_Para_Sub-heading 1": {"sz": body_ascii, "szCs": body_cs,
                                   "bold": False, "firstLine": 1.19},
-        "TU_Para_Sub-heading 2": {"sz": body_ascii, "szCs": 16.0,
+        "TU_Para_Sub-heading 2": {"sz": body_ascii, "szCs": body_cs,
                                   "bold": False, "firstLine": 1.63},
-        "TU_Para_Sub-heading 3": {"sz": body_ascii, "szCs": 16.0,
+        "TU_Para_Sub-heading 3": {"sz": body_ascii, "szCs": body_cs,
                                   "bold": False, "firstLine": 1.63},
     }
     allowed_latin = PROFILES[profile]["latin_font"]
@@ -949,10 +955,16 @@ def check_template_integrity(doc, F, profile):
         name = nm.get(qn("w:val"))
         rule_name = name
         if name and name.startswith("TU_Main Heading"):
+            # TU_Main Heading_Chapter6/7/8 ในเทมเพลตทางการตั้งค่าไม่เหมือน Chapter1–5
+            # (rev.2024 อังกฤษ Chapter6 = CS 16.5pt · Times rev.2023 Chapter6–8 =
+            # Times 12pt ทั้ง ascii และ CS) — เทียบด้วยกฎเดียวกันหมดจะฟ้องผิดตั้งแต่
+            # เทมเพลตเปล่า ๆ. ตรวจเฉพาะ Chapter1–5 ซึ่งเป็นบทที่วิทยานิพนธ์ใช้จริง
+            if re.search(r"Chapter\s*[6-9]", name):
+                continue
             rule_name = "TU_Main Heading"
         rules = expected.get(rule_name)
         if rule_name == "TU_Main Heading":
-            rules = {"sz": body_ascii, "szCs": 16.0, "bold": True,
+            rules = {"sz": body_ascii, "szCs": head_cs, "bold": True,
                      "left": PROFILES[profile]["main_heading_left_in"]}
         if not rules:
             continue
