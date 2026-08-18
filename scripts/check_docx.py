@@ -1024,8 +1024,6 @@ def check_fonts_and_sizes(doc, F, profile):
     bad_fonts = {}     # font -> count
     bad_loc = {}       # font -> first occurrence
     bad_sizes = {}     # (style, script, got, want) -> [count, first location]
-    color_issues = 0
-    color_loc = ""
     seen_sizes = {}
     format_cache = {}
 
@@ -1069,27 +1067,22 @@ def check_fonts_and_sizes(doc, F, profile):
                         if key not in bad_sizes:
                             bad_sizes[key] = [0, f"{para_loc}: “{txt.strip()[:30]}”"]
                         bad_sizes[key][0] += 1
-            # ---- color (should be black/auto) ----
-            if first_fmt and first_fmt["color"]:
-                color_issues += 1
-                if not color_loc:
-                    color_loc = f"{para_loc}: “{txt.strip()[:30]}” ({first_fmt['color']})"
+            # การตรวจสีตัวอักษรถูกถอดออก — ดูหมายเหตุที่ท้ายฟังก์ชันนี้
     if bad_fonts:
-        top = sorted(bad_fonts.items(), key=lambda x: -x[1])[:8]
-        total_bad = sum(bad_fonts.values())
-        # widespread foreign fonts = critical; isolated (<=2 runs) = major/artifact
-        sev = "critical" if total_bad > 2 else "major"
-        loc = "; ".join(f"{n} → {bad_loc.get(n,'')}" for n, _ in top[:4])
         latin = sorted(p['latin_font'])[0]
         thai = "TH Sarabun New"
         correct = (f"{latin} {p['latin_body_pt']:g}pt (ละติน) / {thai} {p['body_pt']:g}pt (ไทย)"
                    if p['latin_body_pt'] != p['body_pt']
                    else f"{thai} {p['body_pt']:g}pt")
-        F.append(Finding(sev, "Font",
-            "Foreign fonts found (not allowed for this template): " +
-            ", ".join(f"{n} x{c}" for n, c in top),
-            "เลือกข้อความแล้วเปลี่ยนฟอนต์ให้ถูกต้อง (มัก copy-paste มาจากที่อื่น)",
-            loc=loc, correct=correct))
+        # **หนึ่งฟอนต์ = หนึ่งแถว** — เดิมรวม Arial/SimSun/Angsana ไว้แถวเดียวแล้วยก
+        # ตัวอย่างข้อความของฟอนต์แรกมาเป็นคำค้น ผู้อ่านจึงค้นไปเจอข้อความที่ไม่ได้ผิด
+        # ตามที่แถวนั้นบอก. แยกแถวแล้วแต่ละแถวชี้ข้อความของฟอนต์ตัวเองได้ตรงจุด
+        for fname, count in sorted(bad_fonts.items(), key=lambda x: -x[1])[:8]:
+            F.append(Finding(
+                "critical" if count > 2 else "major", "Font",
+                f"Foreign font found (not allowed for this template): {fname} x{count}",
+                "เลือกข้อความแล้วเปลี่ยนฟอนต์ให้ถูกต้อง (มัก copy-paste มาจากที่อื่น)",
+                loc=bad_loc.get(fname, ""), correct=correct))
     if bad_sizes:
         items = sorted(bad_sizes.items(), key=lambda kv: -kv[1][0])
         total = sum(meta[0] for _, meta in items)
@@ -1113,11 +1106,15 @@ def check_fonts_and_sizes(doc, F, profile):
             + (f" (Thai) / {p['latin_body_pt']}pt (Latin)"
                if p['latin_body_pt'] != p['body_pt'] else "")
             + "; chapter/section headings 18pt; cover title 20pt."))
-    if color_issues:
-        F.append(Finding("minor", "Color",
-            f"{color_issues} run(s) use non-black text colour",
-            "เปลี่ยนสีตัวอักษรเป็นสีดำ (Automatic/Black) ทั้งเล่ม",
-            loc=color_loc, correct="ดำล้วน (000000)"))
+    # หมายเหตุ: **ไม่ตรวจสีตัวอักษรแล้ว**
+    #
+    # เดิมนับ run ที่มี w:color แล้วรายงานว่า "มีข้อความ N จุดไม่ใช่สีดำ" ซึ่งวัดกับเล่มจริง
+    # แล้วไม่ตรง: ค่า color ที่อ่านได้รวมสีของ hyperlink (ฟ้าโดยธรรมชาติ) สีจากธีมของ
+    # ตาราง และ run ที่ตั้ง color=auto ไว้ชัดเจน — ตัวเลขจึงพองเป็นหลักร้อยทั้งที่เปิด
+    # ไฟล์แล้วเห็นเป็นสีดำหมด. แถวนี้ยังชี้จุดไม่ได้ด้วยเพราะเป็นการนับรวมทั้งเล่ม
+    #
+    # ถ้าจะเอากลับมา ต้องแยกสีที่ "ตาเห็นว่าไม่ดำ" ออกจาก hyperlink/ธีม/auto ให้ได้ก่อน
+    # แล้วรายงานเป็นจุด ๆ พร้อมข้อความที่ยกมา ไม่ใช่ตัวเลขรวม
 
 def check_page_numbering(doc, F):
     """Best-effort: confirm page-number fields exist in headers and flag if

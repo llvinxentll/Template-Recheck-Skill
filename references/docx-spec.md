@@ -59,7 +59,7 @@
 
 ฟอนต์ที่อนุญาต: `thai`/`english` → TH Sarabun New (รับ TH SarabunPSK/THSarabunNew เป็นรุ่นเก่า); `english-times` → ละติน = Times New Roman, ไทย = TH Sarabun New
 ข้อยกเว้น: ฟอนต์สมการ (Cambria Math, Symbol) อนุญาตในสมการเท่านั้น
-สีตัวอักษร: **ดำล้วนทั้งเล่ม**
+สีตัวอักษร: ดำล้วนทั้งเล่ม (**สคริปต์ไม่ตรวจ** — ค่าสีใน OOXML รวม hyperlink/ธีม/auto ทำให้ตัวเลขไม่ตรงกับที่ตาเห็น)
 
 ## 4. เลขหน้า
 
@@ -175,7 +175,7 @@
 
 ## 8. สิ่งที่ตัวตรวจอัตโนมัติตรวจได้ vs ต้องอ่านยืนยัน
 
-**`check_docx.py`:** ขนาดหน้า/ระยะขอบ, effective font แยกไทย-ละติน (รวมข้อความใน table cells), direct size ที่ทับ named style, ค่า drift ของ TU_* styles, สี, ระยะบรรทัดที่ระบุ, page-number field, คำปก/ปีที่ผิดระบบแบบ deterministic และคำผิดชุดความมั่นใจสูง.
+**`check_docx.py`:** ขนาดหน้า/ระยะขอบ, effective font แยกไทย-ละติน (รวมข้อความใน table cells), direct size ที่ทับ named style, ค่า drift ของ TU_* styles, ระยะบรรทัดที่ระบุ, page-number field, คำปก/ปีที่ผิดระบบแบบ deterministic และคำผิดชุดความมั่นใจสูง.
 
 **`check_deep.py`:** เลขหน้าสารบัญเฉพาะรายการที่จับคู่ชื่อหัวข้อจริงได้, **บรรทัดบังคับบนหน้าปก/หน้าอนุมัติ**, **บรรทัดว่างคั่นกลางย่อหน้าเนื้อความ**, เลขบท/หน้าเริ่มบท, Keywords ตัวหนาโดย resolve style inheritance, **ป้ายรายการในตารางบทคัดย่อ/หน้าอนุมัติ/ประวัติผู้เขียน**, **ความสม่ำเสมอของบันไดการเยื้องหัวข้อ**, hanging indent และ APA7 เชิงกลไก. การเรียงอัตโนมัติตรวจเฉพาะภาษาอังกฤษ; ภาษาไทยต้องใช้ Thai collation ใน reading pass.
 

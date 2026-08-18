@@ -405,7 +405,7 @@ _RE_MARGIN = re.compile(r"(left|right|top|bottom|header|footer|gutter)\s+margin\
 # ถ้า class ตัวอักษรแคบไป กฎนี้จะไม่จับ แล้ว finding ตกไปใช้ข้อความดิบภาษาเครื่อง
 _RE_STYLE_DRIFT = re.compile(r"^(TU_[\w \-]+?):\s*(.+?)\s*=\s*(.+?)\s*\(เทมเพลต\s*=\s*(.+?)\)")
 _RE_SIZE = re.compile(r"([\w_ ]+)/(thai|latin|ไทย|ละติน):\s*([\d.]+)pt\s*→\s*([\d.]+)pt")
-_RE_FOREIGN_FONT = re.compile(r"Foreign fonts found[^:]*:\s*(.+)", re.I)
+_RE_FOREIGN_FONT = re.compile(r"Foreign fonts? found[^:]*:\s*(.+)", re.I)
 _RE_COLOR = re.compile(r"(\d+)\s*run\(s\) use non-black text colour", re.I)
 _RE_HYPHEN = re.compile(r"ช่วงเลขหน้า\s*'([^']+)'\s*ใช้ยัติภังค์")
 _RE_NO_ENTRY = re.compile(r"อ้าง\s*'([^']+)'\s*ในเนื้อหา แต่ไม่พบในรายการอ้างอิง")
@@ -613,11 +613,19 @@ def humanize(f, ctx=""):
 
     m = _RE_FOREIGN_FONT.search(issue)
     if m:
-        f["issue"] = f"พบฟอนต์นอกเทมเพลตปนอยู่: {m.group(1)[:110]}"
+        detail = m.group(1)[:110].strip()
+        hit = re.match(r"(.+?)\s*x(\d+)\s*$", detail)
+        if hit:
+            font, times = hit.group(1), int(hit.group(2))
+            f["issue"] = (f"มีข้อความที่ใช้ฟอนต์ {font} ปนอยู่ {times} จุด "
+                          f"ซึ่งไม่ใช่ฟอนต์ของเทมเพลต (ข้อความในช่องซ้ายคือหนึ่งในจุดนั้น)")
+        else:
+            f["issue"] = f"พบฟอนต์นอกเทมเพลตปนอยู่: {detail}"
         f["criterion"] = correct or "ทั้งเล่มต้องใช้ TH Sarabun New 16 pt (โปรไฟล์ Times = Times New Roman 12 pt)"
-        f["fix"] = ("ลากคลุมข้อความที่ระบุ → แท็บ Home → ช่องชื่อฟอนต์ พิมพ์ชื่อฟอนต์ของเทมเพลต "
-                    "(ถ้าเป็นตารางให้คลุมทั้งตาราง) — ถ้าเจอหลายจุด ใช้ Ctrl+A แล้วตั้งทีเดียว "
-                    "แต่ต้องตั้งค่าสไตล์ให้ถูกก่อน")
+        f["fix"] = ("ก๊อปข้อความในช่องซ้ายไปค้นด้วย Ctrl+F เพื่อไปให้ถึงจุดนั้น → ลากคลุมข้อความ "
+                    "(ถ้าเป็นตารางให้คลุมทั้งตาราง) → แท็บ Home → ช่องชื่อฟอนต์ พิมพ์ชื่อฟอนต์ของเทมเพลต\n"
+                    "ฟอนต์แปลกปลอมมักติดมาจากการ copy-paste — ถ้าจะกวาดทีเดียวทั้งเล่ม ใช้ Ctrl+A "
+                    "แล้วตั้งฟอนต์ แต่ต้องแน่ใจก่อนว่าสไตล์ของหัวข้อตั้งถูกแล้ว ไม่งั้นหัวข้อจะกลายเป็นขนาดเดียวกับเนื้อความ")
         f["correct"] = correct or "TH Sarabun New 16 pt"
         return f
 
@@ -1354,6 +1362,11 @@ def refine_searches(findings, index, corpus):
             f["search"] = better
             continue
         ordinal = occurrence_ordinal(order, f.get("_key"), needle)
+        # ลำดับที่เกินจำนวนที่นับได้ = จับคู่ตำแหน่งไม่ตรง (ข้อความในตาราง/หัวกระดาษ
+        # ถูกนับคนละแบบกับ corpus) บอกเลขที่เป็นไปไม่ได้อย่าง "ปรากฏ 5 จุด จุดที่ 6"
+        # ทำให้ผู้อ่านไล่หาแล้วไม่เจอ แล้วเลิกเชื่อทั้งรายงาน — เงียบไว้ดีกว่า
+        if ordinal and ordinal > count:
+            ordinal = None
         if ordinal:
             f["search_note"] = (f"คำนี้ปรากฏ {count} จุดในเล่ม — จุดที่ต้องแก้คือ**จุดที่ {ordinal}** "
                                 f"(กด Find Next ไล่ไปจากต้นเล่ม)")
