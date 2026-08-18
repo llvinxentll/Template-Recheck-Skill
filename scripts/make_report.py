@@ -467,6 +467,30 @@ def humanize(f, ctx=""):
                         "คณะ/มหาวิทยาลัย → ปีการศึกษา → ลิขสิทธิ์)")
         return f
 
+    if category == "สไตล์หัวข้อ":
+        want = re.search(r"ต้องใช้สไตล์ (TU_[\w\- ]*[\w\-])", str(f.get("criterion") or ""))
+        if want:
+            style = want.group(1).strip()
+            # ชื่อจริงของสไตล์หัวข้อใหญ่มีเลขบทต่อท้าย (TU_Main Heading_Chapter3)
+            # ถ้าบอกแค่ "TU_Main Heading" ผู้อ่านจะหาไม่เจอในกล่อง Styles
+            hint = ""
+            if style == "TU_Main Heading":
+                num = re.search(r"“(\d+)\.", str(f.get("issue") or ""))
+                style = f"TU_Main Heading_Chapter{num.group(1)}" if num else "TU_Main Heading_ChapterN"
+                hint = " (เลขท้ายชื่อสไตล์คือเลขบท — บทที่ 1 ใช้ TU_Main Heading _Chapter1 มีเว้นวรรคหน้า _Chapter1)"
+            f["fix"] = (f"คลิกที่บรรทัดหัวข้อนี้ (คลิกที่ไหนก็ได้ในบรรทัด ไม่ต้องลากคลุม) "
+                        f"→ แท็บ Home → ในกล่อง Styles เลื่อนหา “{style}” แล้วคลิก{hint} "
+                        f"— ขนาด ความหนา และการเยื้องจะเปลี่ยนตามเทมเพลตให้เอง ไม่ต้องตั้งเอง")
+            f["correct"] = f"สไตล์ {style}"
+        else:
+            f["fix"] = ("ไล่คลิกหัวข้อทีละอันแล้วเลือกสไตล์จากกล่อง Styles ให้ตรงระดับ: "
+                        "X.X = TU_Main Heading_ChapterN (N คือเลขบท) · X.X.X = TU_Sub-heading 1 · "
+                        "X.X.X.X = TU_Sub-heading 2 · (1) = TU_Sub-heading 3\n"
+                        "ทำเสร็จแล้วอย่าลืมอัปเดตสารบัญ: คลิกที่สารบัญ → References → Update Table "
+                        "→ Update entire table")
+            f["correct"] = "สไตล์หัวข้อตามระดับที่เทมเพลตกำหนด"
+        return f
+
     if category == "การเว้นบรรทัด":
         f["fix"] = ("กด Ctrl+H → กดปุ่ม More → ติ๊ก Use wildcards ออกก่อน → "
                     "ช่อง Find พิมพ์ ^p^p → ช่อง Replace พิมพ์ ^p → Replace All "
