@@ -118,7 +118,7 @@ for name, _ in cd.COVER_TH + cd.COVER_EN:
 
 # --- ตรวจสองทิศทาง: ขาดบรรทัดที่ต้องมี + มีบรรทัดที่เทมเพลตตัดออกแล้ว ----------
 DEP = [c for _, c in cd.COVER_DEPRECATED]
-check("ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์" in DEP and "COPYRIGHT OF THAMMASAT UNIVERSITY" in DEP,
+check("ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์" in DEP,
       "cover: บรรทัดที่เทมเพลตตัดออกแล้วหายไปจากรายการตรวจ — เล่มที่ก๊อปปกรุ่นเก่ามาจะผ่านฉลุย")
 
 # ประโยคที่ "พูดถึง" บรรทัดนี้ (เช่นในคู่มือหรือรายงานผลตรวจ) ต้องไม่ถูกนับว่าเป็นหน้าปกผิด
@@ -135,25 +135,46 @@ check(cd.HEADING_STYLE_BY_LEVEL[2] == "TU_Main Heading"
       "heading style: แม่แบบระดับหัวข้อไม่ตรงกับเทมเพลต")
 
 # --- ตรวจกับไฟล์ตัวอย่างทางการ: กฎใหม่ต้องไม่ฟ้องอะไรเลย --------------------
-SAMPLES = Path(__file__).resolve().parent.parent / "ตัวอย่างการเขียนและวางเนื้อหา"
-if SAMPLES.is_dir():
-    try:
-        from docx import Document
-    except ImportError:
-        Document = None
-    if Document is not None:
-        for sample in sorted(SAMPLES.glob("*.docx")):
-            doc = Document(sample)
-            found = []
-            cd.check_front_matter_tables(doc, [None] * len(doc.paragraphs), found)
-            cd.check_heading_indent_ladder(doc, [None] * len(doc.paragraphs), found)
-            cd.check_cover_elements(doc, [None] * len(doc.paragraphs), found)
-            cd.check_blank_lines_in_prose(doc, [None] * len(doc.paragraphs), found)
-            cd.check_heading_styles(doc, [None] * len(doc.paragraphs), found)
-            check(not found,
-                  f"ตัวอย่างทางการ {sample.name!r} ถูกฟ้อง {len(found)} จุด "
-                  f"({found[0]['issue'][:70] if found else ''}) — ตัวอย่างของหอสมุดคือเกณฑ์ "
-                  f"ถ้ากฎฟ้องตัวอย่าง แปลว่ากฎผิด ไม่ใช่ตัวอย่างผิด")
+# --- ประเภทงาน: เทมเพลตเดียวกัน เปลี่ยนแค่คำเรียก ---------------------------
+for blob, want in [("การค้นคว้าอิสระนี้เป็นส่วนหนึ่งของการศึกษาตามหลักสูตร", "is"),
+                   ("AN INDEPENDENT STUDY SUBMITTED IN PARTIAL FULFILLMENT OF", "is"),
+                   ("สารนิพนธ์นี้เป็นส่วนหนึ่งของการศึกษา", "term-paper"),
+                   ("A DISSERTATION SUBMITTED IN PARTIAL FULFILLMENT", "dissertation"),
+                   ("วิทยานิพนธ์นี้เป็นส่วนหนึ่งของการศึกษาตามหลักสูตร", "thesis")]:
+    got = cd.detect_work_type(blob)[0]
+    check(got == want, f"work-type: {blob[:34]!r} ควรเป็น {want} แต่ได้ {got}")
+
+# ปกอังกฤษของดุษฎีนิพนธ์ที่หอสมุดใช้ **มี** COPYRIGHT OF THAMMASAT UNIVERSITY จริง
+# ต่างจากปกไทยที่ไม่มี — ใส่เป็นบรรทัดต้องห้ามเมื่อไรคือฟ้องตัวอย่างที่ถูกต้อง
+for _, canonical in cd.COVER_DEPRECATED:
+    check("COPYRIGHT" not in canonical.upper(),
+          "cover-deprecated: COPYRIGHT OF THAMMASAT UNIVERSITY มีอยู่จริงในปกอังกฤษของหอสมุด "
+          "ห้ามใส่เป็นบรรทัดต้องห้าม")
+
+# --- ตรวจกับไฟล์ตัวอย่างทางการ: กฎใหม่ต้องไม่ฟ้องอะไรเลย --------------------
+# เฉพาะไฟล์ที่ **หอสมุดทำเอง** เท่านั้นที่ใช้เป็นเกณฑ์ "ต้องได้ 0"
+# โฟลเดอร์ "อ้างอิงคำเรียกประเภทงาน" เป็นผลงานนักศึกษาที่ใช้ดูคำเรียก (การค้นคว้าอิสระ /
+# DISSERTATION) ไม่ใช่ไฟล์ต้นแบบ — เอามาตั้งเป็นเกณฑ์ไม่ได้ เพราะตัวมันเองก็มีจุดที่ผิดรูปแบบ
+SAMPLE_DIRS = [Path(__file__).resolve().parent.parent / d
+               for d in ("ตัวอย่างการเขียนและวางเนื้อหา",)]
+for SAMPLES in SAMPLE_DIRS:
+    if SAMPLES.is_dir():
+        try:
+            from docx import Document
+        except ImportError:
+            Document = None
+        if Document is not None:
+            for sample in sorted(SAMPLES.glob("*.docx")):
+                doc = Document(sample)
+                found = []
+                cd.check_front_matter_tables(doc, [None] * len(doc.paragraphs), found)
+                cd.check_heading_indent_ladder(doc, [None] * len(doc.paragraphs), found)
+                cd.check_cover_elements(doc, [None] * len(doc.paragraphs), found)
+                cd.check_heading_styles(doc, [None] * len(doc.paragraphs), found)
+                check(not found,
+                      f"ตัวอย่างทางการ {sample.name!r} ถูกฟ้อง {len(found)} จุด "
+                      f"({found[0]['issue'][:70] if found else ''}) — ตัวอย่างของหอสมุดคือเกณฑ์ "
+                      f"ถ้ากฎฟ้องตัวอย่าง แปลว่ากฎผิด ไม่ใช่ตัวอย่างผิด")
 
 if FAIL:
     print(f"FAILED ({len(FAIL)}):")

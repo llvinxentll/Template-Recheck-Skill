@@ -538,11 +538,40 @@ COVER_TH = [
 ]
 COVER_EN = [
     ("บรรทัด “BY” ก่อนชื่อผู้เขียน", r"^\s*BY\s*$"),
-    ("บรรทัด “A THESIS/DISSERTATION SUBMITTED IN PARTIAL FULFILLMENT…”",
+    ("บรรทัด “A THESIS/DISSERTATION/AN INDEPENDENT STUDY SUBMITTED IN PARTIAL FULFILLMENT…”",
      r"SUBMITTED IN PARTIAL FULFILLMENT"),
     ("บรรทัด “THAMMASAT UNIVERSITY”", r"THAMMASAT UNIVERSITY"),
     ("บรรทัด “ACADEMIC YEAR …”", r"ACADEMIC YEAR"),
 ]
+
+# --- ประเภทงาน: เทมเพลตเดียวกัน เปลี่ยนแค่คำเรียก ---------------------------
+# ยืนยันจากไฟล์ตัวอย่างจริงที่หอสมุดใช้ — โครงหน้าปก ขนาดฟอนต์ และลำดับบรรทัด
+# เหมือนเทมเพลตวิทยานิพนธ์ทุกประการ ต่างแค่คำว่า วิทยานิพนธ์ / สารนิพนธ์ /
+# การค้นคว้าอิสระ (และฝั่งอังกฤษ THESIS / DISSERTATION / INDEPENDENT STUDY)
+#
+# ทำไมต้องรู้ประเภท: รายงานต้องพูดคำเดียวกับที่อยู่ในเล่ม ถ้าเล่ม IS แล้วรายงาน
+# เขียนว่า "วิทยานิพนธ์นี้เป็นส่วนหนึ่ง…" ผู้อ่านจะหาไม่เจอและคิดว่ารายงานผิดเล่ม
+WORK_TYPES = [
+    ("is", "การค้นคว้าอิสระ", "AN INDEPENDENT STUDY",
+     r"การค้นคว้าอิสระ|Independent Study", r"INDEPENDENT STUDY"),
+    ("term-paper", "สารนิพนธ์", "A THEMATIC PAPER",
+     r"สารนิพนธ์", r"THEMATIC PAPER"),
+    ("dissertation", "ดุษฎีนิพนธ์/วิทยานิพนธ์ (ปริญญาเอก)", "A DISSERTATION",
+     r"ดุษฎีนิพนธ์", r"\bDISSERTATION\b"),
+    ("thesis", "วิทยานิพนธ์", "A THESIS", r"วิทยานิพนธ์", r"\bTHESIS\b"),
+]
+
+
+def detect_work_type(blob):
+    """คืน (รหัส, คำไทย, คำอังกฤษ) ของประเภทงานจากข้อความส่วนหน้า
+
+    ไล่จากคำที่เฉพาะเจาะจงที่สุดก่อน เพราะ "การค้นคว้าอิสระ" กับ "สารนิพนธ์"
+    เป็นคำเฉพาะ ส่วน "วิทยานิพนธ์" เป็นคำกลางที่โผล่ในเอกสารอื่นได้ง่ายกว่า
+    """
+    for code, th, en, rx_th, rx_en in WORK_TYPES:
+        if re.search(rx_th, blob) or re.search(rx_en, blob, re.I):
+            return code, th, en
+    return "thesis", "วิทยานิพนธ์", "A THESIS"
 APPROVAL_LINE = re.compile(
     r"ได้รับการตรวจสอบและอนุมัติ|was approved as partial fulfillment|has been approved",
     re.I)
@@ -557,7 +586,9 @@ APPROVAL_LINE = re.compile(
 # (ใช้ grep นับให้ได้ 0 ทั้งสามไฟล์ก่อนเสมอ)
 COVER_DEPRECATED = [
     (r"ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์", "ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์"),
-    (r"COPYRIGHT OF THAMMASAT UNIVERSITY", "COPYRIGHT OF THAMMASAT UNIVERSITY"),
+    # ⚠ ห้ามใส่ "COPYRIGHT OF THAMMASAT UNIVERSITY" กลับเข้ามา — ไฟล์ตัวอย่างภาษา
+    # อังกฤษที่หอสมุดใช้ (ดุษฎีนิพนธ์) มีบรรทัดนี้อยู่จริงบนหน้าปก ต่างจากปกไทย
+    # ที่ไม่มี. ฟ้องเมื่อไรคือฟ้องตัวอย่างที่ถูกต้อง
 ]
 FRONT_STOP = re.compile(r"^\s*(บทคัดย่อ|ABSTRACT)\b", re.I)
 
@@ -608,17 +639,22 @@ def check_cover_elements(doc, pages, out):
     if not (has_th or has_en):
         return          # ไม่มีหน้าปกในไฟล์นี้ (เช่นไฟล์ที่ตัดมาเฉพาะบางส่วน) — ไม่เรียกร้อง
 
+    code, word_th, word_en = detect_work_type(blob)
+
     for label, spec, active, seen in (("ไทย", COVER_TH, has_th, th_found),
                                       ("อังกฤษ", COVER_EN, has_en, en_found)):
         if not active:
             continue
         missing = [name for name, _ in spec if name not in seen]
         for name in missing:
+            # แทนคำกลางในข้อความด้วยคำจริงของเล่มนี้ ผู้อ่านจะได้ค้นเจอ
+            shown = name.replace("…นี้เป็น", f"{word_th}นี้เป็น").replace(
+                "A THESIS/DISSERTATION/AN INDEPENDENT STUDY", word_en)
             out.append(F("major", "หน้าปก",
-                         f"หน้าปก{label}ยังไม่มี{name}",
-                         "องค์ประกอบหน้าปกยึดตาม `ตัวอย่างการพิมพ์ส่วนประกอบของวิทยานิพนธ์` "
-                         "ของหอสมุด — ขาดบรรทัดใดบรรทัดหนึ่งถือว่าปกไม่ครบและถูกตีกลับ",
-                         "หน้าปกใน", f"เพิ่ม{name}"))
+                         f"หน้าปก{label}ยังไม่มี{shown}",
+                         f"เทมเพลตหน้าปกของ{word_th}ใช้โครงเดียวกับวิทยานิพนธ์ "
+                         "ต่างแค่คำเรียกประเภทงาน — ขาดบรรทัดใดบรรทัดหนึ่งถือว่าปกไม่ครบ",
+                         "หน้าปกใน", f"เพิ่ม{shown}"))
 
     # --- บรรทัดที่เทมเพลตรุ่นปัจจุบันตัดออกแล้ว แต่ยังค้างอยู่ในเล่ม -----------
     seen_dep = set()
@@ -648,8 +684,25 @@ def check_cover_elements(doc, pages, out):
                      "“…was approved as partial fulfillment of the requirements for…”",
                      "หน้าอนุมัติ", "เพิ่มประโยครับรองตามเทมเพลต"))
 
+    # ชื่อประเภทงานต้องใช้คำเดียวกันทั้งเล่ม — เล่มที่ดัดแปลงจากเทมเพลตวิทยานิพนธ์
+    # มักแก้คำบนปกแล้วลืมแก้บนหน้าอนุมัติหรือในตารางบทคัดย่อ กลายเป็นคนละคำในเล่มเดียว
+    if code != "thesis":
+        others = [w for c, w, _, _, _ in WORK_TYPES if c != code and w in blob]
+        if "วิทยานิพนธ์" in blob and code in ("is", "term-paper"):
+            others.append("วิทยานิพนธ์")
+        others = sorted({w for w in others if w != word_th})
+        if others:
+            out.append(F("major", "หน้าปก",
+                         f"เล่มนี้เป็น{word_th} แต่ส่วนหน้ายังมีคำว่า “{others[0]}” ปนอยู่",
+                         f"เทมเพลตของ{word_th}ดัดแปลงจากเทมเพลตวิทยานิพนธ์ "
+                         "ถ้าแก้คำไม่ครบทุกจุด (ปกใน · ปกภาษาที่สอง · หน้าอนุมัติ · "
+                         "ตารางข้อมูลบทคัดย่อ) จะกลายเป็นคนละคำในเล่มเดียวกัน",
+                         "ส่วนหน้าของเล่ม",
+                         f"แก้คำว่า “{others[0]}” ให้เป็น “{word_th}” ให้ครบทุกจุดในส่วนหน้า"))
+
 
 # --- บรรทัดว่างคั่นกลางย่อหน้าเนื้อความ --------------------------------------
+CAPTION_LABEL = re.compile(r"^\s*(ตารางที่|ภาพที่|รูปที่|Table|Figure)\s*[\d๐-๙]+([.\-][\d๐-๙]+)?\s*$", re.I)
 _PROSE_MIN = 120
 _NOT_PROSE = re.compile(
     r"^\s*(\d+[\.\)]|\(\d+\)|บทที่|CHAPTER|ตารางที่|ภาพที่|รูปที่|Table|Figure|"
@@ -693,7 +746,12 @@ def check_blank_lines_in_prose(doc, pages, out):
         j = i
         while j < len(texts) and not texts[j]:
             j += 1
-        if j < len(texts) and _is_prose(texts[i - 1]) and _is_prose(texts[j]):
+        # caption ในเล่มจริงมักแยกสองย่อหน้า: "ภาพที่ 4.13" แล้วชื่อภาพยาว ๆ ต่อบรรทัดถัดมา
+        # บรรทัดที่สองยาวเกิน 120 ตัวอักษรจึงถูกนับเป็นร้อยแก้วทั้งที่เป็นคำบรรยายภาพ
+        # ทำให้บรรทัดว่างหลัง caption (ซึ่งเป็นการจัดหน้าปกติ) ถูกฟ้อง — ต้องมองย้อนขึ้นไป
+        after_caption = i >= 2 and CAPTION_LABEL.match(texts[i - 2])
+        if (j < len(texts) and not after_caption
+                and _is_prose(texts[i - 1]) and _is_prose(texts[j])):
             hits.append((i, texts[i - 1][-40:], texts[j][:40]))
         i = j
     if not hits:
