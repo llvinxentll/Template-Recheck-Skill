@@ -107,8 +107,20 @@ check(cd._is_prose(LONG), "blank-line: ย่อหน้ายาวปกต�
 # --- หน้าปก: ต้องไม่เรียกร้องปกภาษาที่ไฟล์นั้นไม่มี --------------------------
 # ไฟล์ปกอังกฤษล้วนมีอักษรไทยได้ (หัว "ภาคผนวก ค") — ถ้าเช็คแค่ "มีอักษรไทย"
 # จะไปฟ้องว่าปกไทยไม่ครบทั้งที่ไฟล์นั้นไม่มีปกไทยตั้งแต่แรก
-check(len(cd.COVER_TH) >= 5 and len(cd.COVER_EN) >= 5,
+check(len(cd.COVER_TH) >= 4 and len(cd.COVER_EN) >= 4,
       "cover: รายการบรรทัดบนปกหายไป")
+
+# เทมเพลตทางการทั้งสามไฟล์ไม่มีบรรทัดลิขสิทธิ์ — เคยใส่เป็นกฎแล้วฟ้องผิดครบทุกเล่ม
+for name, _ in cd.COVER_TH + cd.COVER_EN:
+    check("ลิขสิทธิ์" not in name and "COPYRIGHT" not in name.upper(),
+          "cover: เอาบรรทัดลิขสิทธิ์/COPYRIGHT กลับเข้ามาเป็นเกณฑ์ — "
+          "เทมเพลตทางการ 3 ไฟล์ไม่มีบรรทัดนี้เลย")
+
+# แม่แบบหัวข้อต้องตรงกับเทมเพลต
+check(cd.HEADING_STYLE_BY_LEVEL[2] == "TU_Main Heading"
+      and cd.HEADING_STYLE_BY_LEVEL[3] == "TU_Sub-heading 1"
+      and cd.HEADING_STYLE_BY_LEVEL[4] == "TU_Sub-heading 2",
+      "heading style: แม่แบบระดับหัวข้อไม่ตรงกับเทมเพลต")
 
 # --- ตรวจกับไฟล์ตัวอย่างทางการ: กฎใหม่ต้องไม่ฟ้องอะไรเลย --------------------
 SAMPLES = Path(__file__).resolve().parent.parent / "ตัวอย่างการเขียนและวางเนื้อหา"
@@ -125,6 +137,7 @@ if SAMPLES.is_dir():
             cd.check_heading_indent_ladder(doc, [None] * len(doc.paragraphs), found)
             cd.check_cover_elements(doc, [None] * len(doc.paragraphs), found)
             cd.check_blank_lines_in_prose(doc, [None] * len(doc.paragraphs), found)
+            cd.check_heading_styles(doc, [None] * len(doc.paragraphs), found)
             check(not found,
                   f"ตัวอย่างทางการ {sample.name!r} ถูกฟ้อง {len(found)} จุด "
                   f"({found[0]['issue'][:70] if found else ''}) — ตัวอย่างของหอสมุดคือเกณฑ์ "

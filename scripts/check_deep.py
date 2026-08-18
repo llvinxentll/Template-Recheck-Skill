@@ -525,12 +525,16 @@ def _find_label_table(doc, spec, min_hits=3):
 # ข้อความทุกบรรทัดคัดจากไฟล์ตัวอย่างทางการ ไม่ได้แต่งเอง. ตรวจแค่ "มีบรรทัดนี้ไหม"
 # ไม่ตรวจการจัดกึ่งกลาง เพราะไฟล์ตัวอย่างเองก็จัดกึ่งกลางด้วยวิธีต่างกัน (บาง
 # บรรทัดใช้ jc=center บางบรรทัดเว้นวรรคดัน) อ่านจาก OOXML แล้วแยกไม่ออกว่าอันไหนผิด
+#
+# ⚠ อย่าเติมบรรทัด "ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์" / "COPYRIGHT OF THAMMASAT
+# UNIVERSITY" กลับเข้ามา — เทมเพลตทางการทั้งสามไฟล์ (Thai rev.2024, English rev.2024,
+# English Times rev.2023) **ไม่มีบรรทัดนี้เลย** บรรทัดนี้อยู่ในเอกสารตัวอย่างรุ่นเก่า
+# เท่านั้น เคยใส่เป็นกฎแล้วฟ้องผิดครบทั้ง 8 เล่มที่วัด
 COVER_TH = [
     ("บรรทัด “โดย” ก่อนชื่อผู้เขียน", r"^\s*โดย\s*$"),
     ("บรรทัด “…นี้เป็นส่วนหนึ่งของการศึกษาตามหลักสูตร…”", r"เป็นส่วนหนึ่งของการศึกษาตามหลักสูตร"),
     ("ชื่อมหาวิทยาลัยธรรมศาสตร์", r"มหาวิทยาลัยธรรมศาสตร์"),
     ("บรรทัด “ปีการศึกษา …”", r"ปีการศึกษา"),
-    ("บรรทัด “ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์”", r"ลิขสิทธิ์ของมหาวิทยาลัยธรรมศาสตร์"),
 ]
 COVER_EN = [
     ("บรรทัด “BY” ก่อนชื่อผู้เขียน", r"^\s*BY\s*$"),
@@ -538,7 +542,6 @@ COVER_EN = [
      r"SUBMITTED IN PARTIAL FULFILLMENT"),
     ("บรรทัด “THAMMASAT UNIVERSITY”", r"THAMMASAT UNIVERSITY"),
     ("บรรทัด “ACADEMIC YEAR …”", r"ACADEMIC YEAR"),
-    ("บรรทัด “COPYRIGHT OF THAMMASAT UNIVERSITY”", r"COPYRIGHT OF THAMMASAT UNIVERSITY"),
 ]
 APPROVAL_LINE = re.compile(
     r"ได้รับการตรวจสอบและอนุมัติ|was approved as partial fulfillment|has been approved",
@@ -757,7 +760,85 @@ def _indent_of(paragraph):
     return round(total, 2)
 
 
+# แม่แบบหัวข้อของเทมเพลตทางการ: เลขข้อแบบไหน ต้องใช้สไตล์ไหน
+# (ดูส่วน "เนื้อหาทั้งหมดของเทมเพลต" ใน references/templates/*.md)
+#   1.1        → TU_Main Heading _ChapterN   (16pt หนา · เยื้อง 0" ไทย / 0.25" อังกฤษ)
+#   1.1.1      → TU_Sub-heading 1            (16pt หนา · เยื้องบรรทัดแรก 0.80")
+#   1.1.1.1    → TU_Sub-heading 2            (16pt หนา · เยื้องบรรทัดแรก 1.10")
+#   (1)        → TU_Sub-heading 3            (16pt หนา · เยื้องบรรทัดแรก 1.40")
+HEADING_STYLE_BY_LEVEL = {2: "TU_Main Heading", 3: "TU_Sub-heading 1",
+                          4: "TU_Sub-heading 2"}
+
+
+def check_heading_styles(doc, pages, out):
+    """หัวข้อที่มีเลขข้อ ต้องใช้สไตล์หัวข้อของเทมเพลตให้ตรงระดับ
+
+    ทำไมสำคัญกว่าการไล่ตั้งขนาด/เยื้องเอง: สไตล์คือสิ่งที่ทำให้ทั้งเล่มเหมือนกัน
+    และเป็นตัวสร้างสารบัญอัตโนมัติ. หัวข้อที่พิมพ์ด้วย Normal แล้วจัดขนาดเอง จะไม่
+    ขึ้นในสารบัญและจะเพี้ยนทันทีที่แก้ที่อื่น — ตรวจจากชื่อสไตล์จึงตรงต้นเหตุกว่า
+    ตรวจค่าที่มองเห็น.
+
+    ตรวจเฉพาะเล่มที่ **มีสไตล์ TU_ อยู่แล้ว** เพราะเล่มที่ไม่มีเลยถูกรายงานไปแล้วว่า
+    ไม่ได้สร้างจากเทมเพลต การฟ้องซ้ำทีละหัวข้อไม่ได้เพิ่มข้อมูลอะไร
+    """
+    names = {s.name for s in doc.styles}
+    if "TU_Sub-heading 1" not in names:
+        return
+    rows, totals = [], 0
+    for i, para in enumerate(doc.paragraphs):
+        raw = para.text or ""
+        text = raw.strip()
+        if not text or "\t" in raw or re.search(r"\.{3,}", text) or len(text) > 120:
+            continue
+        m = NUMBERED_HEAD.match(text)
+        if not m:
+            continue
+        level = 1 + m.group(2).count(".")
+        want = HEADING_STYLE_BY_LEVEL.get(level)
+        if not want:
+            continue
+        totals += 1
+        style = para.style.name if para.style else ""
+        ok = style.startswith(want) if want == "TU_Main Heading" else style == want
+        if not ok:
+            rows.append((i, level, text, style or "(ไม่ระบุ)", want))
+    if not rows:
+        return
+
+    label = {2: "หัวข้อใหญ่ (X.X)", 3: "หัวข้อย่อยระดับ 1 (X.X.X)",
+             4: "หัวข้อย่อยระดับ 2 (X.X.X.X)"}
+    if len(rows) / max(totals, 1) >= 0.6:
+        # ทั้งเล่มไม่ได้ใช้สไตล์หัวข้อของเทมเพลต — เป็นปัญหาเดียว ไม่ใช่ 88 ปัญหา
+        used = sorted({r[3] for r in rows})[:4]
+        i, level, text, style, want = rows[0]
+        out.append(F("major", "สไตล์หัวข้อ",
+                     f"หัวข้อที่มีเลขข้อในเล่มนี้ {len(rows)} จาก {totals} จุด ไม่ได้ใช้สไตล์หัวข้อ "
+                     f"ของเทมเพลต (ที่ใช้อยู่: {', '.join(used)}) เช่น “{text[:45]}”",
+                     "เทมเพลต TULIBS กำหนดสไตล์ตามระดับหัวข้อ: X.X = TU_Main Heading_ChapterN · "
+                     "X.X.X = TU_Sub-heading 1 · X.X.X.X = TU_Sub-heading 2 · (1) = TU_Sub-heading 3 "
+                     "— หัวข้อที่ไม่ได้ใช้สไตล์เหล่านี้จะไม่ขึ้นในสารบัญอัตโนมัติ",
+                     f"para {i}",
+                     "ไล่คลิกที่หัวข้อแต่ละอันแล้วเลือกสไตล์ให้ตรงระดับจากกล่อง Styles"))
+        return
+    for i, level, text, style, want in rows[:8]:
+        out.append(F("major", "สไตล์หัวข้อ",
+                     f"{label[level]} “{text[:45]}” ใช้สไตล์ {style} ซึ่งไม่ใช่สไตล์ของระดับนี้",
+                     f"เทมเพลต TULIBS: หัวข้อระดับนี้ต้องใช้สไตล์ {want} "
+                     "— ใช้ผิดสไตล์ทำให้ขนาด/การเยื้องไม่ตรงกับหัวข้ออื่นระดับเดียวกัน "
+                     "และสารบัญอัตโนมัติจะเก็บระดับผิด",
+                     f"para {i}", f"เปลี่ยนสไตล์ของย่อหน้านี้เป็น {want}"))
+    if len(rows) > 8:
+        out.append(F("major", "สไตล์หัวข้อ",
+                     f"ยังมีหัวข้อที่ใช้สไตล์ไม่ตรงระดับอีก {len(rows) - 8} จุด",
+                     "รายงานเฉพาะ 8 จุดแรกเพื่อไม่ให้ตารางยาวเกินจำเป็น",
+                     f"para {rows[8][0]}", "ตรวจสไตล์ของหัวข้อที่เหลือให้ตรงระดับ"))
+
+
 def check_heading_indent_ladder(doc, pages, out):
+    # เล่มที่ใช้สไตล์ TU_ อยู่แล้ว ให้ check_heading_styles ตรวจแทน — ตรงต้นเหตุกว่า
+    # และไม่ต้องรายงานสองแถวสำหรับหัวข้อเดียวกัน
+    if "TU_Sub-heading 1" in {s.name for s in doc.styles}:
+        return
     levels = {}
     for i, para in enumerate(doc.paragraphs):
         raw = para.text or ""
@@ -836,6 +917,7 @@ def inspect_document(doc, path, profile=None, only=None, started_at=None, page_d
         check_front_matter_tables(doc, pages, out)
         check_cover_elements(doc, pages, out)
         check_blank_lines_in_prose(doc, pages, out)
+        check_heading_styles(doc, pages, out)
         check_heading_indent_ladder(doc, pages, out)
     if only != "template":
         check_apa_mechanical(doc, pages, out)
