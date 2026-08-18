@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Regression tests for the rules that historically fired on correct text.
+
+Run: python3 scripts/test_false_positives.py
+
+A false positive costs more than a miss: the student burns time "fixing" text
+that was already right, and stops trusting the report. Every rule that fires on
+free-form prose or on URLs belongs here with the shapes it must NOT flag.
+"""
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import check_deep as cd  # noqa: E402
+
+FAIL = []
+
+
+def check(cond, msg):
+    if not cond:
+        FAIL.append(msg)
+
+
+# --- in-text citation matcher: must not invent author names from prose -------
+SHOULD_NOT_MATCH = [
+    "Table 3 shows the change in GDP (2019) across provinces.",
+    "The results were published later that year (2019).",
+    "This framework was revised in Thailand (2020) and elsewhere.",
+    "Figure 2 (2021) illustrates the sampling frame.",
+    "According to the survey (2018), most respondents agreed.",
+    "Data collection ran from January (2019) to March.",
+    "ผลการศึกษาในช่วง Section 4 (2020) แสดงให้เห็นว่า",
+]
+SHOULD_MATCH = [
+    ("Smith (2019) argued that the model holds.", "Smith", "2019"),
+    ("Recent work (Johnson, 2020) supports this.", "Johnson", "2020"),
+    ("Nguyen et al. (2021) replicated the finding.", "Nguyen", "2021"),
+    ("As shown by Garcia & Lopez (2018), the effect is small.", "Garcia", "2018"),
+    ("แนวคิดนี้ได้รับการยืนยันโดย Anderson (2017) ในงานวิจัยล่าสุด", "Anderson", "2017"),
+]
+
+for text in SHOULD_NOT_MATCH:
+    hits = [m.group(1) for m in cd._INTEXT_RE.finditer(text)
+            if m.group(1).lower() not in cd._NOT_A_SURNAME]
+    check(not hits, f"in-text: false positive {hits} in {text!r}")
+
+for text, name, year in SHOULD_MATCH:
+    hits = [(m.group(1), m.group(2)) for m in cd._INTEXT_RE.finditer(text)
+            if m.group(1).lower() not in cd._NOT_A_SURNAME]
+    check((name, year) in hits, f"in-text: missed {name} ({year}) in {text!r}")
+
+# --- hyphen-in-number-range: must not touch URLs or DOIs ---------------------
+URL_CASES = [
+    "Ministry of Health. (2020). Annual report. https://example.org/11-2019/report.pdf",
+    "Jackson, L. M. (2019). The psychology of prejudice. https://doi.org/10.1037/0000168-000",
+    "OECD. (2021). Education at a glance. https://doi.org/10.1787/b35a14e5-en",
+]
+for t in URL_CASES:
+    flagged = [m.group(0) for m in
+               re.finditer(r"(?<![\d\-–])(\d{1,4})\s*-\s*(\d{1,4})(?![\d\-–])", t)
+               if not cd._inside_url(t, m.start())
+               and int(m.group(2)) >= int(m.group(1))]
+    check(not flagged, f"page-range: false positive {flagged} in {t!r}")
+
+REAL_RANGE = "Grady, J. S. (2019). Emotions in storybooks. Media Culture, 8(3), 207-217."
+flagged = [m.group(0) for m in
+           re.finditer(r"(?<![\d\-–])(\d{1,4})\s*-\s*(\d{1,4})(?![\d\-–])", REAL_RANGE)
+           if not cd._inside_url(REAL_RANGE, m.start())
+           and int(m.group(2)) >= int(m.group(1))]
+check(flagged == ["207-217"], f"page-range: missed real hyphen range, got {flagged}")
+
+# --- publisher location: only after the title, never inside it ---------------
+TITLE_LOOKALIKE = "Chen, W. (2019). Bangkok, Thailand: A case study of urban transit. Routledge."
+REAL_LOCATION = "Chen, W. (2019). Urban transit systems. Cambridge, MA: Harvard University Press."
+LOC_RE = re.compile(
+    r"(?:^|[\.\?!]\s)\s*([A-Z][a-zA-Z\-' ]{2,30},\s*(?:[A-Z]{2}|[A-Z][a-z]+))\s*:\s*[A-Z]")
+check(not LOC_RE.search(cd._after_title_span(TITLE_LOOKALIKE)),
+      "publisher-location: false positive on a title that starts with a city name")
+check(LOC_RE.search(cd._after_title_span(REAL_LOCATION)),
+      "publisher-location: missed a real 'City, ST: Publisher'")
+
+# --- ป้ายรายการหน้าบทคัดย่อ: ต้องรับรูปที่เขียนต่างกันได้ ---------------------
+# เล่มจริงที่ผ่านการตรวจใช้ป้ายนี้อย่างน้อย 3 แบบ ถ้าจำแบบเดียวจะฟ้องผิดเกือบทุกเล่ม
+FACULTY_KEYS = dict(cd.ABSTRACT_LABELS_EN)["Faculty/University"]
+for label in ("Department/Faculty/University", "Major Field Faculty University",
+              "Faculty University"):
+    check(any(k.lower() in label.lower() for k in FACULTY_KEYS),
+          f"abstract-table: ป้าย {label!r} ควรถือว่าถูกต้อง")
+
+# --- บันไดการเยื้อง: ค่าที่ต่างกันแค่เศษปัดต้องไม่ถือว่าไม่สม่ำเสมอ -----------
+check(cd._INDENT_TOL >= 0.05,
+      "indent ladder: tolerance แคบเกินไป จะฟ้อง 0.49\" กับ 0.50\" ว่าต่างกัน")
+
+# --- บรรทัดว่างที่เป็นการจัดหน้าปกติ ต้องไม่ถูกนับเป็น "Enter คั่นย่อหน้า" -----
+# ไฟล์ตัวอย่างทางการเว้นบรรทัดก่อนหัวข้อและก่อน "คำสำคัญ:" เป็นเรื่องปกติ กฎจึงต้อง
+# ดูทั้งบรรทัดบนและล่างว่าเป็นร้อยแก้วจริงทั้งคู่ ไม่ใช่เห็นบรรทัดว่างแล้วฟ้อง
+LONG = "ก" * 150
+for boundary in ("คำสำคัญ: การละทิ้งตะกร้าสินค้า, พฤติกรรมผู้บริโภค",
+                 "2.1 แนวคิดและทฤษฎีที่เกี่ยวข้องกับพฤติกรรมผู้บริโภคออนไลน์",
+                 "ตารางที่ 4.1 แสดงผลการวิเคราะห์ข้อมูลเบื้องต้นของกลุ่มตัวอย่าง",
+                 "A STUDY OF THE EFFECTS OF LIFESTYLE ON PURCHASE INTENTION"):
+    check(not cd._is_prose(boundary),
+          f"blank-line: ถือว่า {boundary[:34]!r} เป็นร้อยแก้ว จะทำให้ฟ้องบรรทัดว่างที่ถูกต้อง")
+check(cd._is_prose(LONG), "blank-line: ย่อหน้ายาวปกติต้องนับเป็นร้อยแก้ว")
+
+# --- หน้าปก: ต้องไม่เรียกร้องปกภาษาที่ไฟล์นั้นไม่มี --------------------------
+# ไฟล์ปกอังกฤษล้วนมีอักษรไทยได้ (หัว "ภาคผนวก ค") — ถ้าเช็คแค่ "มีอักษรไทย"
+# จะไปฟ้องว่าปกไทยไม่ครบทั้งที่ไฟล์นั้นไม่มีปกไทยตั้งแต่แรก
+check(len(cd.COVER_TH) >= 5 and len(cd.COVER_EN) >= 5,
+      "cover: รายการบรรทัดบนปกหายไป")
+
+# --- ตรวจกับไฟล์ตัวอย่างทางการ: กฎใหม่ต้องไม่ฟ้องอะไรเลย --------------------
+SAMPLES = Path(__file__).resolve().parent.parent / "ตัวอย่างการเขียนและวางเนื้อหา"
+if SAMPLES.is_dir():
+    try:
+        from docx import Document
+    except ImportError:
+        Document = None
+    if Document is not None:
+        for sample in sorted(SAMPLES.glob("*.docx")):
+            doc = Document(sample)
+            found = []
+            cd.check_front_matter_tables(doc, [None] * len(doc.paragraphs), found)
+            cd.check_heading_indent_ladder(doc, [None] * len(doc.paragraphs), found)
+            cd.check_cover_elements(doc, [None] * len(doc.paragraphs), found)
+            cd.check_blank_lines_in_prose(doc, [None] * len(doc.paragraphs), found)
+            check(not found,
+                  f"ตัวอย่างทางการ {sample.name!r} ถูกฟ้อง {len(found)} จุด "
+                  f"({found[0]['issue'][:70] if found else ''}) — ตัวอย่างของหอสมุดคือเกณฑ์ "
+                  f"ถ้ากฎฟ้องตัวอย่าง แปลว่ากฎผิด ไม่ใช่ตัวอย่างผิด")
+
+if FAIL:
+    print(f"FAILED ({len(FAIL)}):")
+    for f in FAIL:
+        print("  -", f)
+    sys.exit(1)
+print("all false-positive regression tests passed")
