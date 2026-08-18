@@ -172,9 +172,9 @@ agent **เขียนไฟล์ JSON หนึ่งไฟล์** แล้
 คู่มือที่ต้องเปิด — **เปิดเท่าที่ใช้ อย่าเปิดทั้งโฟลเดอร์**:
   รายการที่มีอักษรไทย → เปิด <SKILL>/references/apa7-tha-parts/00-INDEX.md ก่อน
                         แล้วเปิด **เฉพาะไฟล์** ref-NN ของประเภทนั้นไฟล์เดียว
-                        (ไฟล์เต็ม apa7-tha/TULIBS-APA7.md ใหญ่มาก อย่าเปิดถ้าไม่จำเป็น)
+                        (ต้องค้นข้ามหมวดให้ grep ในโฟลเดอร์ apa7-tha-parts/ เอา)
   รายการภาษาอังกฤษ    → <SKILL>/references/apa7-eng/<ประเภทแหล่ง>.md
-                        (เช่น "Journal article references.md", "Bookebook references.md")
+                        (เช่น "Journal-article-references.md", "Bookebook-references.md")
                         ดูรายชื่อไฟล์ก่อนแล้วเปิดเฉพาะประเภทที่ตรงกับรายการที่กำลังตรวจ
 
 วิธีตรวจ — ไล่ทีละรายการ ห้ามสุ่ม:

@@ -86,8 +86,8 @@ python3 scripts/check_all.py "<ไฟล์>.docx" \
 **C) APA7 → `domain: "apa7"`** — ใช้เนื้อหารายการอ้างอิงที่อ่านมาแล้วในข้อ A ซ้ำ ไล่ทีละรายการ:
 
 1. **แยกภาษาของ "รายการนั้น"** ไม่ใช่ของทั้งเล่ม — เล่มไทยที่อ้างงานฝรั่งต้องใช้กฎอังกฤษกับรายการฝรั่ง
-2. **ไทย** → เปิด `references/apa7-tha-parts/00-INDEX.md` แล้วเปิด**เฉพาะไฟล์**ของประเภทนั้น (`ref-01-วารสาร…` ฯลฯ). ไฟล์เต็ม `apa7-tha/TULIBS-APA7.md` ใหญ่มาก เปิดเฉพาะตอนต้องค้นข้ามหมวดจริง ๆ
-3. **อังกฤษ** → เปิด**เฉพาะไฟล์**ตรงประเภทใน `references/apa7-eng/` (เช่น `Journal article references.md`). บรรทัดสุดท้ายของแต่ละไฟล์คือ `เกณฑ์อ้างอิง: APA Publication Manual §…` — ก๊อปเลขมาตรานี้ใส่ช่อง `criterion` ของ finding เพื่อให้ผู้อ่านตรวจสอบย้อนได้ว่ากฎมาจากไหน
+2. **ไทย** → เปิด `references/apa7-tha-parts/00-INDEX.md` แล้วเปิด**เฉพาะไฟล์**ของประเภทนั้น (`ref-01-วารสาร…` ฯลฯ). ต้องค้นข้ามหมวดให้ `grep` ในโฟลเดอร์ `apa7-tha-parts/` เอา
+3. **อังกฤษ** → เปิด**เฉพาะไฟล์**ตรงประเภทใน `references/apa7-eng/` (เช่น `Journal-article-references.md`). บรรทัดสุดท้ายของแต่ละไฟล์คือ `เกณฑ์อ้างอิง: APA Publication Manual §…` — ก๊อปเลขมาตรานี้ใส่ช่อง `criterion` ของ finding เพื่อให้ผู้อ่านตรวจสอบย้อนได้ว่ากฎมาจากไหน
 4. **กฎไทยที่ต่างจากอังกฤษ**: ชื่อผู้แต่งไม่กลับคำ · "และ"/"และคณะ" แทน "&"/"et al." · block quote เยื้อง 0.8"
 5. ถูกอยู่แล้ว → ไม่ต้องใส่ใน findings
 
@@ -186,4 +186,4 @@ python3 scripts/make_report.py work/auto.json work/deep.json work/agent*.json --
 | `references/agent-contracts.md` | โหมดขนาน — prompt ของ agent + schema JSON |
 | `references/troubleshooting.md` · `edge-cases.md` | เปิดเมื่อเจอ error สภาพแวดล้อม / เล่มที่ไม่ใช่เคสมาตรฐาน |
 | `references/source-registry.md` | เปิดก่อนอ้างว่าเป็นเกณฑ์ “ล่าสุด” |
-| `PROMPT.md` | prompt สำเร็จรูป + ลำดับงานผู้ใช้ (รวม CHECKLIST เดิมไว้แล้ว) |
+| `PROMPT.md` | prompt สำเร็จรูป + ลำดับงานผู้ใช้ |

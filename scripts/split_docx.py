@@ -213,19 +213,19 @@ def keep_suspects(rows):
 # จัดกลุ่มให้ก่อนแล้วส่งเป็นก้อนตามประเภท → เปิดคู่มือประเภทละครั้งเดียว
 REF_TYPES = [
     ("วิทยานิพนธ์", re.compile(r"วิทยานิพนธ์|สารนิพนธ์|การค้นคว้าอิสระ|thesis|dissertation", re.I),
-     "ref-06-วิทยานิพนธ์ปริญญามหาบัณฑิตและดุษฎีบัณฑิต.md", "Unpublished dissertation or thesis references.md"),
+     "ref-06-theses-dissertations.md", "Unpublished-dissertation-or-thesis-references.md"),
     ("ประชุมวิชาการ", re.compile(r"การประชุม|ประชุมวิชาการ|proceedings?|conference|symposium", re.I),
-     "ref-05-เอกสารประกอบการประชุมวิชาการ.md", "Conference presentation references.md"),
+     "ref-05-conference-papers.md", "Conference-presentation-references.md"),
     ("รายงาน/หน่วยงาน", re.compile(r"รายงานการวิจัย|รายงานประจำปี|กรม|กระทรวง|สำนักงาน|ธนาคารแห่งประเทศไทย|"
                                    r"\breport\b|ministry|agency|bureau|OECD|WHO", re.I),
-     "ref-04-รายงานทางเทคนิค-และรายงานการวิจัย.md", "Report by a government agency.md"),
+     "ref-04-technical-research-reports.md", "Report-by-a-government-agency.md"),
     ("วารสาร", re.compile(r"\d+\s*\(\s*\d+\s*\)\s*,\s*\d+|doi\.org|วารสาร|journal", re.I),
-     "ref-01-วารสาร-นิตยสาร-หนังสือพิมพ์และจดหมายข่าว.md", "Journal article references.md"),
+     "ref-01-journals-magazines-newspapers.md", "Journal-article-references.md"),
     ("เว็บ/ออนไลน์", re.compile(r"https?://|สืบค้นจาก|retrieved from|www\.", re.I),
-     "ref-14-เว็บเพจและเว็บไซต์.md", "Webpage on a website references.md"),
+     "ref-14-webpages-websites.md", "Webpage-on-a-website-references.md"),
     ("หนังสือ", re.compile(r"สำนักพิมพ์|พิมพ์ครั้งที่|press\b|publish|wiley|sage|routledge|mcgraw|"
                            r"\(\s*(พิมพ์ครั้งที่|\d+(st|nd|rd|th)\s+ed)", re.I),
-     "ref-02-หนังสือ-หนังสืออ้างอิง-และบางบทจากหนังสือ.md", "Bookebook references.md"),
+     "ref-02-books-and-chapters.md", "Bookebook-references.md"),
 ]
 THAI_CHARS = re.compile(r"[ก-๙]")
 
