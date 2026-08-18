@@ -1,0 +1,4 @@
+interface:
+  display_name: "TULIBS Thesis DOCX Checker"
+  short_description: "ตรวจ DOCX วิทยานิพนธ์ มธ. พร้อมเลขแผ่นจริง"
+  default_prompt: "Use $tulibs-thesis-docx-checker to inspect the attached TULIBS thesis DOCX, map every correction to its physical sheet, and create separate Template, spelling, and APA 7 tables."
