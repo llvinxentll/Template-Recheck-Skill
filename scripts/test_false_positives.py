@@ -221,6 +221,60 @@ if _FIXTURE.exists():
         check(any("justify" in f["issue"] for f in _hits),
               "must-fire: ย่อหน้า justify ไม่ถูกจับ — check_body_justified ไม่ทำงาน")
 
+# --- หัวข้อ X.X: ห้ามตัดสินค่าเยื้องจาก w:ind ในสไตล์ -------------------------
+# เคสจริง (เล่มที่ตรวจเมื่อ 2026-08-21): numbering ของบทที่ 5 เพี้ยนเป็น
+# left=5130 (3.56") แล้วสไตล์ตั้ง w:ind left=360 ทับไว้เพื่อกลบ หน้ากระดาษจึง
+# ออกมาถูกต้อง — วัดจาก PDF ที่เรนเดอร์จริงได้ 1.5" ชิดขอบเท่าบทอื่นทุกบท
+#
+# กฎเดิมอ่านแต่ w:ind/@w:left ของสไตล์ ไม่อ่าน w:hanging และไม่เปิด numbering.xml
+# เลย จึงฟ้องว่า "เยื้องซ้าย 0.25 ควรเป็น 0.0" แล้วสั่งให้ลบ w:ind ทิ้ง ซึ่งจะ
+# ปลดปล่อยค่า 5130 ออกมา → หัวข้อเลื่อนไป 2.00" และเลขข้อหลุดจากบรรทัด
+# = คำแนะนำที่ทำให้เล่มพังกว่าเดิม
+if _FIXTURE.exists() and _Document is not None:
+    import check_docx as cx
+
+    with zipfile.ZipFile(_FIXTURE) as _zin:
+        _names = [i.filename for i in _zin.infolist()]
+        _data = {n: _zin.read(n) for n in _names}
+
+    _num = _data["word/numbering.xml"].decode("utf-8")
+    _sty = _data["word/styles.xml"].decode("utf-8")
+    _aid = dict(_re.findall(
+        r'<w:num w:numId="(\d+)"[^>]*>\s*<w:abstractNumId w:val="(\d+)"/>', _num))["5"]
+
+    def _break_lvl0(m):
+        blk = m.group(0)
+        lvl0 = _re.search(r'<w:lvl w:ilvl="0".*?</w:lvl>', blk, _re.S).group(0)
+        return blk.replace(lvl0, lvl0.replace('w:left="360"', 'w:left="5130"'))
+
+    _num = _re.sub(r'<w:abstractNum w:abstractNumId="%s".*?</w:abstractNum>' % _aid,
+                   _break_lvl0, _num, flags=_re.S)
+    _sty = _re.sub(r'(<w:style [^>]*w:styleId="TUMainHeadingChapter5".*?<w:pPr>)',
+                   r'\1<w:ind w:left="360"/>', _sty, count=1, flags=_re.S)
+
+    _tmp2 = Path(tempfile.gettempdir()) / "tu_rules_heading_indent.docx"
+    with zipfile.ZipFile(_tmp2, "w", zipfile.ZIP_DEFLATED) as _zout:
+        for _n in _names:
+            _zout.writestr(_n, _num.encode() if _n == "word/numbering.xml"
+                           else _sty.encode() if _n == "word/styles.xml" else _data[_n])
+
+    _F = []
+    cx.check_template_integrity(_Document(_tmp2), _F, "thai")
+    # Finding ของ check_docx เก็บข้อความไว้ที่ .msg (ไม่ใช่ .issue เหมือน check_deep)
+    # — เขียนผิดช่องเมื่อไร เทสต์จะเขียวตลอดโดยไม่ตรวจอะไรเลย
+    _msgs = [f.row()["issue"] for f in _F]
+    _indent_hits = [m for m in _msgs
+                    if "เยื้องซ้าย" in m and "TU_Main Heading" in m]
+    check(not _indent_hits,
+          "false positive: ยังฟ้องเยื้องซ้ายของ TU_Main Heading จาก w:ind ในสไตล์ "
+          "ทั้งที่ค่าจริงอยู่ใน numbering.xml — คำแนะนำที่ออกมาจะทำให้เล่มพัง "
+          f"({_indent_hits[0] if _indent_hits else ''})")
+
+    # กันเทสต์เขียวหลอก: ไฟล์ทดลองนี้ต้องผ่าน check_template_integrity ได้จริง
+    # (ถ้าโหลดไฟล์ไม่ขึ้นหรือสไตล์ไม่ถูกแก้ ลิสต์จะว่างแล้วเงื่อนไขบนก็ผ่านฟรี)
+    check('<w:ind w:left="360"/>' in _sty and 'w:left="5130"' in _num,
+          "ไฟล์ทดลองหัวข้อเยื้องไม่ถูกสร้างตามที่ตั้งใจ — เทสต์นี้ไม่ได้ตรวจอะไรเลย")
+
 if FAIL:
     print(f"FAILED ({len(FAIL)}):")
     for f in FAIL:

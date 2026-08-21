@@ -45,6 +45,10 @@ SARABUN = {"TH Sarabun New", "TH SarabunPSK", "THSarabunNew", "TH Sarabun PSK"}
 SYMBOL_OK = {"Symbol", "Wingdings", "Marlett"}
 MATH_ONLY = {"Cambria Math", "MT Extra"}
 
+# main_heading_left_in = **ตำแหน่งบรรทัดแรกของหัวข้อ X.X** (ไม่ใช่ w:ind/@w:left
+# ของสไตล์) ตอนนี้ **ยังไม่มีตัวตรวจไหนใช้ค่านี้** — ดูเหตุผลที่ตัดการเช็คออกใน
+# check_template_integrity ตรงบล็อก "TU_Main Heading". ใช้แสดงในตารางเกณฑ์ของ
+# รายงานเท่านั้น จะกลับมาใช้ได้เมื่อคำนวณ effective indent จาก numbering.xml ได้
 PROFILES = {
     "thai": {
         "label": "TULIBS Thai rev.2024",
@@ -1066,8 +1070,29 @@ def check_template_integrity(doc, F, profile):
             rule_name = "TU_Main Heading"
         rules = expected.get(rule_name)
         if rule_name == "TU_Main Heading":
-            rules = {"sz": body_ascii, "szCs": head_cs, "bold": True,
-                     "left": PROFILES[profile]["main_heading_left_in"]}
+            # **ไม่ตรวจ "left" ที่นี่** — ตัดออกเมื่อ 2026-08-21 เพราะตัดสินจาก
+            # styles.xml อย่างเดียวไม่ได้ และเคยฟ้องผิดจนคำแนะนำทำให้เล่มพัง
+            #
+            # หัวข้อ X.X ได้ค่าเยื้องมาจาก **numbering.xml** (ทุกสไตล์นี้มี w:numPr)
+            # ไม่ใช่จาก w:ind ในสไตล์ — ในเทมเพลตทางการสไตล์ไม่มี w:ind เลยสักตัว
+            # ค่าจริงคือ numbering ilvl0: left=360 hanging=360 → บรรทัดแรกอยู่ที่
+            # 0.0" (= left − hanging) ส่วนบรรทัดที่ตัดขึ้นบรรทัดใหม่อยู่ที่ 0.25"
+            #
+            # กฎเดิมเทียบ w:ind/@w:left ของสไตล์ (ปริมาณหนึ่ง) กับค่าคงที่
+            # main_heading_left_in (ซึ่งบรรยายตำแหน่ง**บรรทัดแรก** = อีกปริมาณหนึ่ง)
+            # และไม่อ่าน w:hanging เลย — เทมเพลตทางการรอดเพราะสไตล์ไม่มี w:ind
+            # ค่าจึงเป็น None แล้วถูก continue ข้าม กฎนี้เลยไม่เคยถูกทดสอบจริง
+            #
+            # เคสจริงที่ทำให้ต้องตัด: เล่มที่ numbering ของบทที่ 5 เพี้ยนเป็น
+            # left=5130 (3.56") แล้วสไตล์ตั้ง w:ind left=360 ทับไว้เพื่อกลบ —
+            # หน้ากระดาษออกมาถูกต้อง (วัดจาก PDF: ชิดขอบ 1.5" เท่าบทอื่นทุกบท)
+            # แต่กฎฟ้องว่า "เยื้องซ้าย 0.25 ควรเป็น 0.0" และสั่งให้ลบ w:ind ทิ้ง
+            # ซึ่งจะปลดปล่อยค่า 5130 → หัวข้อเลื่อนไป 2.00" และเลขข้อหายจากบรรทัด
+            #
+            # จะกลับมาตรวจใหม่ ต้องคำนวณ effective indent จาก numbering.xml +
+            # style + hanging ให้ครบก่อน แล้วเทียบ "ตำแหน่งบรรทัดแรก" กับเกณฑ์
+            # (PROFILES[...]["main_heading_left_in"] เก็บไว้ให้ตอนนั้นใช้)
+            rules = {"sz": body_ascii, "szCs": head_cs, "bold": True}
         if not rules:
             continue
         a = get_style_attrs(st)
