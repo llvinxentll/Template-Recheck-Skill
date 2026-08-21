@@ -230,15 +230,18 @@ def convert_docx_to_pages(path, timeout=240):
     with tempfile.TemporaryDirectory(prefix="tulibs-page-map-") as tmp:
         profile_dir = os.path.join(tmp, "lo-profile")
         os.makedirs(profile_dir, exist_ok=True)
+        # สำเนาก่อนเสมอ: soffice วางไฟล์ล็อก .~lock.<ชื่อ># ไว้ข้างไฟล์ที่เปิด
+        # ห้ามให้ไปโผล่ในโฟลเดอร์ต้นฉบับของนักศึกษา (สกิลนี้อ่านอย่างเดียว)
+        src = os.path.join(tmp, "src.docx")
+        shutil.copyfile(os.path.abspath(path), src)
         command = [
             soffice, f"-env:UserInstallation=file://{profile_dir}",
             "--headless", "--invisible", "--nologo", "--norestore", "--nodefault",
-            "--convert-to", "pdf", "--outdir", tmp, os.path.abspath(path),
+            "--convert-to", "pdf", "--outdir", tmp, src,
         ]
         proc = subprocess.run(command, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, timeout=timeout)
-        pdf_path = os.path.join(
-            tmp, os.path.splitext(os.path.basename(path))[0] + ".pdf")
+        pdf_path = os.path.join(tmp, "src.pdf")
         if proc.returncode or not os.path.exists(pdf_path):
             detail = (proc.stderr or proc.stdout).decode("utf-8", "replace").strip()
             rc = proc.returncode

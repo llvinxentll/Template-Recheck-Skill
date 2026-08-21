@@ -379,27 +379,48 @@ def build_page_index(doc):
     BR   = qn("w:br")
     TYPE = qn("w:type")
 
-    def count_breaks(el):
-        n = 0
-        for e in el.iter():
-            if e.tag == LRP:
-                n += 1
-            elif e.tag == BR and e.get(TYPE) == "page":
-                n += 1
-        return n
+    TXT = qn("w:t")
 
-    page = 1
-    markers = 0
+    # One physical page transition is usually recorded TWICE: the author's
+    # explicit <w:br w:type="page"/> at the end of the outgoing page, and the
+    # <w:lastRenderedPageBreak/> Word caches at the start of the incoming one.
+    # Counting both inflates the estimate by one sheet per hard break, and the
+    # error accumulates down the document (measured on a real 120-sheet thesis:
+    # 141 estimated vs 120 actual, i.e. every later finding pointed at the wrong
+    # sheet). Collapse markers that are not separated by any text: they describe
+    # the same transition.
+    state = {"page": 1, "markers": 0, "seen_text": True}
+
+    def scan(el):
+        """Walk el, advancing the page counter. Return the page its first text
+        sits on — a paragraph whose break comes before its first run starts on
+        the NEW sheet, not the outgoing one. Assigning it to the outgoing sheet
+        is what makes a correct cover page read as 'split across two sheets'."""
+        first_text_page = None
+        for e in el.iter():
+            if e.tag == LRP or (e.tag == BR and e.get(TYPE) == "page"):
+                if state["seen_text"]:
+                    state["page"] += 1
+                    state["markers"] += 1
+                    state["seen_text"] = False
+                # else: duplicate marker for a transition already counted
+            elif e.tag == TXT and (e.text or "").strip():
+                if first_text_page is None:
+                    first_text_page = state["page"]
+                state["seen_text"] = True
+        return first_text_page
+
     page_by_index = []
     for child in doc.element.body.iterchildren():
         tag = child.tag
         if tag == P:
-            page_by_index.append(page)          # paragraph starts on current page
-            b = count_breaks(child); page += b; markers += b
+            entry = state["page"]
+            starts_on = scan(child)
+            page_by_index.append(entry if starts_on is None else starts_on)
         elif tag == TBL:
-            b = count_breaks(child); page += b; markers += b
+            scan(child)
         # sectPr and other body-level elements don't hold paragraphs — skip
-    return page_by_index, (markers > 0)
+    return page_by_index, (state["markers"] > 0)
 
 def _normalize_page_text(text):
     """Normalize DOCX/PDF text for page matching without losing Thai letters."""
@@ -767,6 +788,17 @@ def section_page_map(doc, page_by_index):
     return out
 
 # ---------------------------------------------------------------------------
+def _visible_text(el):
+    """ข้อความที่ **ตาเห็นจริง** ในย่อหน้า/ตาราง — ไม่รวมโค้ดของ field
+
+    `itertext()` ดึง `<w:instrText>` มาด้วย ซึ่งเก็บคำสั่งของ field เช่น ` FORMTEXT `
+    หรือ ` PAGE \\* MERGEFORMAT `. คำเหล่านี้ไม่ปรากฏบนหน้ากระดาษ แต่พอหลุดเข้าไปใน
+    ช่อง "จุดที่ต้องแก้" ผู้อ่านก๊อปไปวางใน Ctrl+F แล้วค้นไม่เจอ — เทมเพลต TULIBS ใช้
+    form field ทุกช่องที่ให้กรอก หน้าปกและหน้าอนุมัติจึงติด FORMTEXT แทบทุกบรรทัด
+    """
+    return "".join(t.text or "" for t in el.iter(qn("w:t")))
+
+
 def section_anchors(doc):
     """{ดัชนี section: ข้อความแรกที่อ่านออกในส่วนนั้น} — ใช้ชี้ว่า "ส่วนนี้" คือหน้าไหน
 
@@ -782,15 +814,15 @@ def section_anchors(doc):
         if child.tag == qn("w:tbl") and not pending:
             # section ที่มีแต่ตาราง (หน้าแนวนอนสำหรับตารางใหญ่) ไม่มีย่อหน้าให้ยึด
             # ต้องดึงข้อความจากช่องแรกที่มีตัวอักษร ไม่งั้นจะชี้จุดไม่ได้เลย
-            for cell_text in child.itertext():
-                cell_text = (cell_text or "").strip()
+            for cell in child.iter(qn("w:tc")):
+                cell_text = _visible_text(cell).strip()
                 if len(cell_text) >= 3:
                     pending = cell_text[:80]
                     break
             continue
         if child.tag != qn("w:p"):
             continue
-        text = "".join(child.itertext()).strip()
+        text = _visible_text(child).strip()
         if text and not pending:
             # ตัดที่ขึ้นบรรทัดใหม่: ข้อความที่คร่อม line break ก๊อปไปวางใน Ctrl+F
             # แล้วค้นไม่เจอ เพราะ Word ถือว่าเป็นคนละบรรทัด
@@ -852,10 +884,16 @@ def get_style_attrs(style_el):
             d["fontCs"] = rf.get(qn("w:cs")) or rf.get(qn("w:eastAsia"))
         s = rpr.find(qn("w:sz"));  d["sz"] = int(s.get(qn("w:val")))/2 if s is not None else None
         sc = rpr.find(qn("w:szCs")); d["szCs"] = int(sc.get(qn("w:val")))/2 if sc is not None else None
-        b = rpr.find(qn("w:b"))
-        if b is None:
-            b = rpr.find(qn("w:bCs"))
-        d["bold"] = _on_off(b)
+        # ตัวหนามีสองช่องแยกกัน: w:b คุมอักษรละติน, w:bCs คุมอักษรไทย (complex script)
+        #
+        # เทมเพลตทางการตั้ง TU_Chapter เป็น <w:b w:val="0"/><w:bCs/> — ละตินไม่หนา
+        # แต่ไทยหนา ซึ่ง**ถูกต้องแล้ว** เพราะหัวบทในเล่มไทยเป็นข้อความไทย.
+        # โค้ดเดิมอ่าน w:b ก่อนแล้วถ้าเจอก็ไม่ดู bCs เลย จึงสรุปว่า "ไม่หนา" และฟ้อง
+        # เทมเพลตของหอสมุดเองทั้งไฟล์ไทยและอังกฤษ (ดู test_official_templates.py)
+        #
+        # เก็บแยกสองค่า แล้วให้ผู้เรียกตัดสินว่าจะเทียบช่องไหน — ข้อความไทยดู boldCs
+        d["bold"] = _on_off(rpr.find(qn("w:b")))
+        d["boldCs"] = _on_off(rpr.find(qn("w:bCs")))
     if ppr is not None:
         j = ppr.find(qn("w:jc"));  d["align"] = j.get(qn("w:val")) if j is not None else None
         ie = ppr.find(qn("w:ind"))
@@ -863,6 +901,16 @@ def get_style_attrs(style_el):
             fl = ie.get(qn("w:firstLine")); d["firstLine"] = round(int(fl)/1440,3) if fl else None
             lf = ie.get(qn("w:left")) or ie.get(qn("w:start")); d["left"] = round(int(lf)/1440,3) if lf else None
     return d
+
+try:                       # python-docx แปลงชื่อ built-in style เป็นชื่อที่ผู้ใช้เห็น
+    from docx.styles import BabelFish as _BabelFish
+
+    def _ui_style_name(raw):
+        return _BabelFish.internal2ui(raw) if raw else raw
+except Exception:          # รุ่นที่ไม่มี BabelFish — คืนชื่อดิบ
+    def _ui_style_name(raw):
+        return raw
+
 
 def style_usage(doc):
     """{ชื่อสไตล์: (จำนวนย่อหน้าที่ใช้, ข้อความตัวอย่างแรก)} รวมการสืบทอด base style.
@@ -875,20 +923,68 @@ def style_usage(doc):
     """
     usage = {}
 
-    def bump(style, text):
-        while style is not None:
-            name = getattr(style, "name", None)
+    # python-docx resolve `.style` ใหม่ทุกครั้งที่เรียก และแต่ละครั้งสแกน styles.xml
+    # ด้วย XPath เพื่อหา default style — เล่ม 30 หน้ายิงไป 15,000 ครั้ง กินเวลา 6 จาก
+    # 8.5 วินาทีของการตรวจทั้งหมด. อ่าน w:pStyle/w:rStyle จาก XML ตรง ๆ แล้วแคช
+    # สายการสืบทอด styleId → [ชื่อสไตล์ตั้งแต่ตัวเองขึ้นไปถึงราก] ครั้งเดียวต่อสไตล์
+    styles_part = doc.styles.element
+    by_id, chain_cache = {}, {}
+    default_para_name = None
+    for st in styles_part.findall(qn("w:style")):
+        sid = st.get(qn("w:styleId"))
+        nm = st.find(qn("w:name"))
+        base = st.find(qn("w:basedOn"))
+        # w:name เก็บชื่อภายใน ("heading 1") ส่วน python-docx แสดงชื่อที่ผู้ใช้เห็น
+        # ("Heading 1") — โค้ดส่วนอื่นเทียบกับชื่อหลัง จึงต้องแปลงให้ตรงกัน
+        raw = nm.get(qn("w:val")) if nm is not None else None
+        by_id[sid] = (_ui_style_name(raw),
+                      (base.get(qn("w:val")) if base is not None else None))
+        if st.get(qn("w:default")) == "1" and st.get(qn("w:type")) == "paragraph":
+            default_para_name = by_id[sid][0]
+
+    def chain_of(style_id):
+        """[ชื่อสไตล์] จากตัวเองไล่ขึ้นไปถึงราก — แคชไว้ใช้ซ้ำ"""
+        if style_id in chain_cache:
+            return chain_cache[style_id]
+        names, seen, sid = [], set(), style_id
+        while sid and sid in by_id and sid not in seen:
+            seen.add(sid)
+            name, base = by_id[sid]
             if name:
-                count, sample = usage.get(name, (0, ""))
-                usage[name] = (count + 1, sample or (text or "").strip()[:120])
-            style = getattr(style, "base_style", None)
+                names.append(name)
+            sid = base
+        chain_cache[style_id] = names
+        return names
+
+    def bump_names(names, text):
+        for name in names:
+            count, sample = usage.get(name, (0, ""))
+            usage[name] = (count + 1, sample or (text or "").strip()[:120])
 
     def visit(paragraph):
         text = paragraph.text
-        bump(paragraph.style, text)
-        for run in paragraph.runs:
-            if run.style is not None and run.style is not paragraph.style:
-                bump(run.style, run.text or text)
+        p_el = paragraph._p
+        ppr = p_el.find(qn("w:pPr"))
+        pstyle = None
+        if ppr is not None:
+            ps = ppr.find(qn("w:pStyle"))
+            if ps is not None:
+                pstyle = ps.get(qn("w:val"))
+        if pstyle:
+            bump_names(chain_of(pstyle), text)
+        elif default_para_name:
+            bump_names([default_para_name], text)
+        for r_el in p_el.findall(qn("w:r")):
+            rpr = r_el.find(qn("w:rPr"))
+            if rpr is None:
+                continue
+            rs = rpr.find(qn("w:rStyle"))
+            if rs is None:
+                continue
+            rid = rs.get(qn("w:val"))
+            if rid and rid != pstyle:
+                rtext = "".join(t.text or "" for t in r_el.findall(qn("w:t")))
+                bump_names(chain_of(rid), rtext or text)
 
     for paragraph in doc.paragraphs:
         visit(paragraph)
@@ -953,6 +1049,12 @@ def check_template_integrity(doc, F, profile):
         nm = st.find(qn("w:name"))
         if nm is None: continue
         name = nm.get(qn("w:val"))
+        # **ข้าม character style (…​ Char)** — Word สร้างคู่แฝดอัตโนมัติให้ทุก
+        # paragraph style ที่ตั้ง w:link ไว้ ("TU_Chapter" → "TU_Chapter Char")
+        # ตัวคู่แฝดเก็บเฉพาะ rPr และมีค่าต่างจากตัวหลักโดยธรรมชาติ (เช่น szCs=33)
+        # เอามาเทียบกับเกณฑ์ของ paragraph style = ฟ้องเทมเพลตทางการ 5 สไตล์ทุกไฟล์
+        if st.get(qn("w:type")) == "character" or (name or "").endswith(" Char"):
+            continue
         rule_name = name
         if name and name.startswith("TU_Main Heading"):
             # TU_Main Heading_Chapter6/7/8 ในเทมเพลตทางการตั้งค่าไม่เหมือน Chapter1–5
@@ -990,6 +1092,13 @@ def check_template_integrity(doc, F, profile):
 
         for key, want in rules.items():
             got = a.get(key)
+            if key == "bold":
+                # เอกสารไทยได้ความหนาจาก w:bCs — ถือว่า "หนา" ถ้าช่องใดช่องหนึ่งเปิด
+                # และถือว่า "ไม่หนา" ต่อเมื่อปิดทั้งคู่หรือไม่ได้ตั้งเลย
+                b_latin, b_cs = a.get("bold"), a.get("boldCs")
+                if b_latin is None and b_cs is None:
+                    continue
+                got = bool(b_latin) or bool(b_cs)
             if got is None:
                 continue
             same = approx(got, want, .02) if isinstance(want, float) else got == want
@@ -1027,11 +1136,18 @@ def check_fonts_and_sizes(doc, F, profile):
     seen_sizes = {}
     format_cache = {}
 
-    def expected_size(style_name, script):
+    # ข้อความที่เทมเพลตกำหนดให้เป็น 20 pt ทั้งที่ใช้สไตล์ TU_Chapter (ซึ่งเป็น 18 pt)
+    # — หน้าคั่นภาคผนวกและชื่อเรื่องบนหน้าปก. ทั้งสองจุดตั้ง direct size ทับสไตล์ไว้
+    # ในเทมเพลตทางการเอง จึงไม่ใช่ drift (ดู docx-spec.md §3)
+    TWENTY_PT_OK = re.compile(r"^\s*(ภาคผนวก|APPENDICES|APPENDIX)\s*$", re.I)
+
+    def expected_size(style_name, script, text=""):
         if not style_name:
             return None
         latin_body = p["latin_body_pt"]
         if style_name == "TU_Chapter":
+            if TWENTY_PT_OK.match(text or ""):
+                return None      # หน้าคั่น = 20 pt ตามเทมเพลต ไม่ต้องเทียบ
             return 18.0 if script == "thai" else (14.0 if profile == "english-times" else 18.0)
         if (style_name == "TU_Paragraph_Normal" or
                 style_name.startswith("TU_Main Heading") or
@@ -1061,7 +1177,7 @@ def check_fonts_and_sizes(doc, F, profile):
                 size_pt = fmt["size"]
                 if size_pt:
                     seen_sizes[size_pt] = seen_sizes.get(size_pt, 0) + 1
-                    want = expected_size(style_name, scr)
+                    want = expected_size(style_name, scr, para.text)
                     if want is not None and not approx(size_pt, want, .01):
                         key = (style_name, scr, size_pt, want)
                         if key not in bad_sizes:

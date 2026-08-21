@@ -57,7 +57,7 @@ def run_all(path, auto_json="auto.json", deep_json="deep.json", profile=None,
             f"{heading}=แผ่นที่ {page}" for heading, page in section_pages[:16]))
     elif not auto_payload.get("has_page_numbers"):
         print("⚠ ระบุแผ่นงานไม่ได้ — รายงานจะอ้างตำแหน่งด้วยข้อความที่ยกมาแทนเลขแผ่น\n"
-              "  (ไฟล์ _annotated.docx ยังปักคอมเมนต์ตรงจุดได้ตามปกติ)")
+              "  (ไม่กระทบผลตรวจ: รายงานยึดข้อความสำหรับ Ctrl+F อยู่แล้ว)")
     if page_data.get("warning"):
         print(f"⚠ {page_data['warning']}")
     print(f"JSON written: {auto_json}, {deep_json}")

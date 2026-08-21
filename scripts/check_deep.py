@@ -384,7 +384,20 @@ def check_apa_mechanical(doc, pages, out):
 
     # การเรียงอังกฤษเทียบ casefold ได้แน่นอน; ภาษาไทยต้องใช้กฎ collation เฉพาะ
     # (สระนำ/วรรณยุกต์) จึงปล่อยให้ manual pass เพื่อไม่สร้าง false positive.
-    for label, group in (("อังกฤษ", [e for e in entries if not entry_is_thai(e[2])]),):
+    #
+    # **ข้ามทั้งหมดถ้าเป็นรายการแบบเรียงเลข** — TULIBS ให้เลือกได้ 2 แบบ: แยกหมวด
+    # (เรียงตัวอักษร) หรือเรียงเลขตามลำดับที่อ้างในเนื้อหา. แบบหลังเรียงตามลำดับการ
+    # อ้าง ไม่ใช่ตามตัวอักษร — เอากฎตัวอักษรไปจับจะฟ้องทุกเล่มที่ใช้แบบเรียงเลข
+    # รวมทั้งเทมเพลตทางการเอง (ดู docx-spec.md §7)
+    # จับด้วย "ลำดับเลขที่นับขึ้นจริง" ไม่ใช่อัตราส่วน — รายการแบบเรียงเลขมีบรรทัด
+    # ต่อเนื่อง ("…(continued)") คั่นอยู่ครึ่งหนึ่ง อัตราส่วนจึงตกไม่ถึงเกณฑ์
+    _nums = [int(m.group(1)) for _, _, t in entries
+             if (m := re.match(r"^\s*(\d{1,3})[.)]\s", t or ""))]
+    numbered_style = (len(_nums) >= 3 and _nums[0] == 1
+                      and all(b - a == 1 for a, b in zip(_nums, _nums[1:])))
+
+    for label, group in (("อังกฤษ", [] if numbered_style else
+                          [e for e in entries if not entry_is_thai(e[2])]),):
         keys = [re.sub(r"^[\"'“”\s]+", "", e[2]).lower() for e in group]
         for k in range(1, len(keys)):
             if keys[k] < keys[k-1]:
@@ -562,12 +575,22 @@ WORK_TYPES = [
 ]
 
 
+# placeholder ในเทมเพลตที่เสนอ "ทางเลือก" ไม่ใช่การระบุประเภทงาน
+# เทมเพลตทางการเขียน "THESIS OR DISSERTATION TITLE" ไว้ให้นักศึกษาเลือกลบคำที่ไม่ใช้
+# ถ้าอ่านตรง ๆ จะเจอ \bDISSERTATION\b แล้วสรุปว่าเล่มนี้เป็นดุษฎีนิพนธ์
+# จากนั้นไปฟ้องต่อว่า "ยังมีคำว่าวิทยานิพนธ์ปนอยู่" — ฟ้องเทมเพลตของหอสมุดเอง
+_PLACEHOLDER_CHOICE = re.compile(
+    r"\b(THESIS|DISSERTATION|INDEPENDENT STUDY|THEMATIC PAPER)"
+    r"(\s+OR\s+(THESIS|DISSERTATION|INDEPENDENT STUDY|THEMATIC PAPER))+", re.I)
+
+
 def detect_work_type(blob):
     """คืน (รหัส, คำไทย, คำอังกฤษ) ของประเภทงานจากข้อความส่วนหน้า
 
     ไล่จากคำที่เฉพาะเจาะจงที่สุดก่อน เพราะ "การค้นคว้าอิสระ" กับ "สารนิพนธ์"
     เป็นคำเฉพาะ ส่วน "วิทยานิพนธ์" เป็นคำกลางที่โผล่ในเอกสารอื่นได้ง่ายกว่า
     """
+    blob = _PLACEHOLDER_CHOICE.sub(" ", blob or "")
     for code, th, en, rx_th, rx_en in WORK_TYPES:
         if re.search(rx_th, blob) or re.search(rx_en, blob, re.I):
             return code, th, en
@@ -686,9 +709,13 @@ def check_cover_elements(doc, pages, out):
 
     # ชื่อประเภทงานต้องใช้คำเดียวกันทั้งเล่ม — เล่มที่ดัดแปลงจากเทมเพลตวิทยานิพนธ์
     # มักแก้คำบนปกแล้วลืมแก้บนหน้าอนุมัติหรือในตารางบทคัดย่อ กลายเป็นคนละคำในเล่มเดียว
-    if code != "thesis":
+    # ดุษฎีนิพนธ์ยกเว้น: ป.เอก ในไทยเรียก "วิทยานิพนธ์" ได้ตามปกติ (ชื่อประเภทใน
+    # WORK_TYPES เองก็เขียนว่า "ดุษฎีนิพนธ์/วิทยานิพนธ์ (ปริญญาเอก)") — การเจอสองคำ
+    # ในเล่มเดียวจึงไม่ใช่ความไม่สม่ำเสมอ. ฟ้องเฉพาะ IS/สารนิพนธ์ ซึ่งเป็นคนละประเภท
+    # กับวิทยานิพนธ์จริง ๆ
+    if code in ("is", "term-paper"):
         others = [w for c, w, _, _, _ in WORK_TYPES if c != code and w in blob]
-        if "วิทยานิพนธ์" in blob and code in ("is", "term-paper"):
+        if "วิทยานิพนธ์" in blob:
             others.append("วิทยานิพนธ์")
         others = sorted({w for w in others if w != word_th})
         if others:
@@ -1007,6 +1034,89 @@ def check_heading_indent_ladder(doc, pages, out):
                          f"ตั้งหัวข้อระดับ {level + 1} ให้เยื้องมากกว่า {modes[level]}\""))
 
 
+MAIN_HEADING_CHAPTER = re.compile(r"TU_Main Heading\s*_\s*Chapter\s*(\d+)", re.I)
+
+
+def check_main_heading_chapter_match(doc, pages, out):
+    """สไตล์หัวข้อใหญ่ของแต่ละบทต้องใช้ต่อเนื่องเป็นช่วงเดียว ไม่สลับข้ามบท
+
+    เทมเพลตแยกสไตล์หัวข้อใหญ่เป็นบทละตัว (Chapter1–Chapter8) เพราะแต่ละตัวผูกกับ
+    ชุดเลขอัตโนมัติคนละชุด (`1.%1`, `2.%1`, …) เลขหัวข้อจึงนับใหม่ทุกบท. นักศึกษา
+    ที่ก๊อปหัวข้อจากบทก่อนหน้าไปวางในบทถัดไปจะได้สไตล์ของบทเดิมติดไปด้วย —
+    Word จะนับเลขต่อจากบทเดิม (ได้ 1.7 ในบทที่ 3) และสารบัญอัตโนมัติเก็บเลขผิดตาม
+
+    **ตรวจจากลำดับสไตล์ ไม่ใช่จากตัวเลขในข้อความ** เพราะเลขหัวข้อในเทมเพลตเป็น
+    field อัตโนมัติ ไม่ปรากฏใน `paragraph.text` เลย — กฎที่อ่านตัวเลขจากข้อความจะ
+    เงียบสนิทกับไฟล์ที่ใช้เลขอัตโนมัติ ซึ่งเป็นกลุ่มที่ต้องการการตรวจนี้ที่สุด
+
+    เกณฑ์: เลขบทของสไตล์ที่ไล่เจอตามลำดับเอกสารต้องเป็นช่วงติดกัน (1,1,2,2,3…)
+    เลขเดิมที่โผล่ซ้ำหลังจากขึ้นเลขใหม่ไปแล้ว = หัวข้อนั้นใช้สไตล์ข้ามบท
+    """
+    if "TU_Sub-heading 1" not in {s.name for s in doc.styles}:
+        return          # เล่มที่ไม่ได้ใช้สไตล์เทมเพลตถูกรายงานไปแล้วที่อื่น
+    seq = []
+    for i, para in enumerate(doc.paragraphs):
+        style = para.style.name if para.style else ""
+        m = MAIN_HEADING_CHAPTER.search(style)
+        if m:
+            seq.append((i, int(m.group(1)), _squash(para.text), style))
+    rows, seen, current = [], set(), None
+    for i, chapter, text, style in seq:
+        if chapter != current:
+            if chapter in seen:                    # เลขบทเดิมกลับมาอีกครั้ง
+                rows.append((i, chapter, text, style, current))
+            seen.add(chapter)
+            current = chapter
+    for i, chapter, text, style, prev in rows[:8]:
+        where = f"“{text[:45]}”" if text else "หัวข้อใหญ่ที่ไม่มีข้อความ"
+        out.append(F("major", "สไตล์หัวข้อ",
+                     f"หัวข้อใหญ่ {where} ใช้สไตล์ {style} ซึ่งเป็นสไตล์ของบทที่ {chapter} "
+                     f"ทั้งที่ก่อนหน้านี้เล่มไล่มาถึงบทที่ {prev} แล้ว",
+                     "เทมเพลต TULIBS ผูกสไตล์หัวข้อใหญ่กับเลขบทหนึ่งต่อหนึ่ง เพราะแต่ละบท "
+                     "ใช้ชุดเลขอัตโนมัติคนละชุด — ใช้สไตล์ข้ามบททำให้เลขหัวข้อนับต่อจากบทเดิม "
+                     "(เช่นได้ 1.7 ในบทที่ 3) และสารบัญอัตโนมัติเก็บเลขผิดตามไปด้วย",
+                     f"para {i}",
+                     "เปลี่ยนสไตล์ของหัวข้อนี้เป็น TU_Main Heading_Chapter ที่ตรงกับบทที่มันอยู่"))
+    if len(rows) > 8:
+        out.append(F("major", "สไตล์หัวข้อ",
+                     f"ยังมีหัวข้อใหญ่ที่ใช้สไตล์ข้ามบทอีก {len(rows) - 8} จุด",
+                     "รายงานเฉพาะ 8 จุดแรกเพื่อไม่ให้ตารางยาวเกินจำเป็น",
+                     f"para {rows[8][0]}",
+                     "ตรวจสไตล์หัวข้อใหญ่ที่เหลือให้ตรงกับบทที่หัวข้อนั้นอยู่"))
+
+
+def check_body_justified(doc, pages, out):
+    """ย่อหน้าเนื้อความจัดชิดขอบสองข้าง (justify) — เทมเพลตใช้ชิดซ้ายทั้งเล่ม
+
+    เทมเพลตทางการไม่มี `jc="both"` ในย่อหน้าเนื้อความเลย (มีเฉพาะย่อหน้าว่างและ
+    ช่องในตารางคำย่อ). การจัด justify กับข้อความไทยทำให้เกิดช่องว่างกว้างผิดปกติ
+    ระหว่างคำ เพราะไทยไม่มีการเว้นวรรคระหว่างคำให้ Word เกลี่ย
+
+    ข้ามย่อหน้าในตาราง (python-docx `doc.paragraphs` ไม่รวมอยู่แล้ว) และย่อหน้าว่าง
+    """
+    hits = []
+    for i, para in enumerate(doc.paragraphs):
+        text = _squash(para.text)
+        if not text:
+            continue
+        ppr = para._p.find(qn("w:pPr"))
+        jc = ppr.find(qn("w:jc")) if ppr is not None else None
+        if jc is not None and jc.get(qn("w:val")) in ("both", "distribute"):
+            hits.append((i, text))
+    if not hits:
+        return
+    i, text = hits[0]
+    extra = f" (พบทั้งหมด {len(hits)} ย่อหน้าในเล่ม)" if len(hits) > 1 else ""
+    out.append(F("minor", "การจัดชิด",
+                 f"ย่อหน้า “{text[:50]}” จัดชิดขอบสองข้าง (justify){extra}",
+                 "เทมเพลต TULIBS จัดเนื้อหาชิดซ้ายทั้งเล่ม — ไม่มีย่อหน้าเนื้อความใดในเทมเพลต "
+                 "ที่ใช้ justify เพราะข้อความไทยไม่มีช่องว่างระหว่างคำให้ Word เกลี่ย "
+                 "ผลคือช่องว่างกลางบรรทัดกว้างผิดปกติ",
+                 f"para {i}",
+                 "เลือกย่อหน้าทั้งหมดในเนื้อเรื่องแล้วกด Ctrl+L (Align Left) "
+                 "หรือแก้ที่สไตล์ TU_Paragraph_Normal → Format → Paragraph → Alignment = Left"))
+
+
 # ---------------------------------------------------------------------------
 def inspect_document(doc, path, profile=None, only=None, started_at=None, page_data=None):
     """ตรวจ deep checks บน Document ที่โหลดแล้วและคืน (payload, findings)."""
@@ -1026,6 +1136,8 @@ def inspect_document(doc, path, profile=None, only=None, started_at=None, page_d
         check_blank_lines_in_prose(doc, pages, out)
         check_heading_styles(doc, pages, out)
         check_heading_indent_ladder(doc, pages, out)
+        check_main_heading_chapter_match(doc, pages, out)
+        check_body_justified(doc, pages, out)
     if only != "template":
         check_apa_mechanical(doc, pages, out)
 

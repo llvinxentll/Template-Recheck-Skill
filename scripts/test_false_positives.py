@@ -176,6 +176,51 @@ for SAMPLES in SAMPLE_DIRS:
                       f"({found[0]['issue'][:70] if found else ''}) — ตัวอย่างของหอสมุดคือเกณฑ์ "
                       f"ถ้ากฎฟ้องตัวอย่าง แปลว่ากฎผิด ไม่ใช่ตัวอย่างผิด")
 
+# --- กฎใหม่ต้อง "จับได้จริง" ไม่ใช่แค่ไม่ฟ้องเทมเพลต -----------------------
+# กฎที่เงียบทั้งกับไฟล์ถูกและไฟล์ผิดจะผ่านด่าน "เทมเพลตต้องได้ 0" ไปได้สบาย ๆ
+# ทั้งที่ไม่ทำงานเลย — จึงต้องมีไฟล์ที่จงใจทำให้ผิดมายืนยันอีกด้านหนึ่ง
+#
+# สร้างจากเทมเพลตทางการแล้วแก้ XML สองจุด: (1) สลับสไตล์หัวข้อใหญ่ของบทหลัง
+# ให้เป็นของบทที่ 1 (2) ตั้งย่อหน้าเนื้อความหนึ่งย่อหน้าเป็น justify
+_FIXTURE = (Path(__file__).resolve().parent.parent / "fixtures"
+            / "TULIBS_Thesis-template-Thai_rev_2024.docx")
+if _FIXTURE.exists():
+    try:
+        from docx import Document as _Document
+    except ImportError:
+        _Document = None
+    if _Document is not None:
+        import re as _re
+        import tempfile
+        import zipfile
+
+        with zipfile.ZipFile(_FIXTURE) as _zin:
+            _xml = _zin.read("word/document.xml").decode("utf-8")
+            _broken = _xml.replace('w:val="TUMainHeadingChapter3"',
+                                   'w:val="TUMainHeadingChapter1"', 1)
+            _m = _re.search(r'<w:pPr><w:pStyle w:val="TUParagraphNormal"/>', _broken)
+            if _m:
+                _broken = _broken[:_m.end()] + '<w:jc w:val="both"/>' + _broken[_m.end():]
+            _tmp = Path(tempfile.gettempdir()) / "tu_rules_musfire.docx"
+            with zipfile.ZipFile(_tmp, "w", zipfile.ZIP_DEFLATED) as _zout:
+                for _item in _zin.infolist():
+                    _zout.writestr(_item,
+                                   _broken.encode("utf-8")
+                                   if _item.filename == "word/document.xml"
+                                   else _zin.read(_item.filename))
+
+        _doc = _Document(_tmp)
+        _pages = [None] * len(_doc.paragraphs)
+        _hits = []
+        cd.check_main_heading_chapter_match(_doc, _pages, _hits)
+        check(any("ข้ามบท" in f["issue"] or "สไตล์ของบทที่" in f["issue"] for f in _hits),
+              "must-fire: สไตล์หัวข้อใหญ่ข้ามบทไม่ถูกจับ — check_main_heading_chapter_match "
+              "อ่านลำดับสไตล์ผิดหรือถูกปิดไป")
+        _hits = []
+        cd.check_body_justified(_doc, _pages, _hits)
+        check(any("justify" in f["issue"] for f in _hits),
+              "must-fire: ย่อหน้า justify ไม่ถูกจับ — check_body_justified ไม่ทำงาน")
+
 if FAIL:
     print(f"FAILED ({len(FAIL)}):")
     for f in FAIL:

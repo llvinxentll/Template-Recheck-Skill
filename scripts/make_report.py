@@ -54,7 +54,7 @@ def pick(d, *keys, default=""):
 # ---- ตำแหน่งที่แสดงในรายงาน -------------------------------------------------
 # รายงานสำหรับนักศึกษาแสดงเฉพาะสิ่งที่หาเจอใน Word: แผ่นที่ + ตาราง/แถว/คอลัมน์
 # **ไม่แสดงเลขย่อหน้า (¶N)** เพราะ Word ไม่มีเลขย่อหน้าให้ดู นักศึกษาเอาไปใช้ไม่ได้
-# ¶N ยังรับเข้ามาได้ตามเดิม (สคริปต์ตรวจอัตโนมัติใส่มาเอง) และ annotate_docx.py ยังใช้มัน
+# ¶N ยังรับเข้ามาได้ตามเดิม (สคริปต์ตรวจอัตโนมัติใส่มาเอง) แต่รายงานตัดทิ้งเสมอ
 # ปักคอมเมนต์ — แค่ถูกตัดออกตอนแสดงผลเท่านั้น
 _TBL_INNER = re.compile(r"tbl(\d+):r(\d+):c(\d+)(?::¶\d+)?", re.I)
 # รูปแบบไทยจาก check_docx/check_deep: "ตาราง 27 แถว 1 คอลัมน์ 2 ย่อหน้า 1"
@@ -1116,6 +1116,74 @@ def _sheet_sort_key(finding):
             SEV_ORDER.get(finding.get("severity"), 9))
 
 
+# finding ที่เกิดจาก "การตั้งค่าหน้ากระดาษ" ซึ่งใน Word แก้ครั้งเดียวได้ทั้งเล่ม
+# (Layout > Margins > Custom > Apply to: Whole document) แต่ OOXML เก็บค่าไว้ทุก
+# section เอกสาร 21 section ที่ตั้งขอบผิดจึงกลายเป็น 42 แถวที่สั่งงานเดียวกันหมด
+#
+# วัดกับไฟล์ที่สลับขอบซ้าย/ขวา: ตารางที่ 1 ยาว 40 แถว ซึ่ง 40 แถวนั้นคือ 2 งาน
+# ผู้อ่านเลื่อนผ่านความซ้ำจนไม่เห็น finding อื่นที่ต้องลงมือแยกทีละจุด
+_DOC_SETTING_RE = re.compile(
+    r"ระยะขอบ(บน|ล่าง|ซ้าย|ขวา)|ขนาดกระดาษ|margin|page size", re.I)
+# ข้อความ finding ยังเป็นภาษาอังกฤษตอนที่ยุบ (แปลเป็นไทยทีหลัง) จึงต้องจับทั้งสองแบบ
+_EDGE_RE = re.compile(
+    r"ระยะขอบ(บน|ล่าง|ซ้าย|ขวา)|ขนาดกระดาษ|\b(top|bottom|left|right)\s+margin|page\s+size",
+    re.I)
+
+
+def _doc_setting_key(f):
+    """คีย์ยุบสำหรับ finding ระดับการตั้งค่าหน้ากระดาษ; None = ไม่ใช่ประเภทนี้"""
+    cat = (f.get("category") or "")
+    issue = (f.get("issue") or "")
+    if not (_DOC_SETTING_RE.search(cat) or _DOC_SETTING_RE.search(issue)):
+        return None
+    # ยุบด้วย "ด้านไหน + ค่าที่พบ + ค่าที่ถูก" — ไม่รวมชื่อ section
+    # ต้องมี edge อยู่ในคีย์เสมอ ไม่งั้นขอบบนกับขอบซ้าย (ค่าที่ถูกเท่ากันคือ 1.5 นิ้ว)
+    # จะถูกยุบรวมกันเป็นแถวเดียว แล้วผู้อ่านจะแก้ไม่ครบ
+    edge = _EDGE_RE.search(issue)
+    got = re.search(r"(\d+(?:\.\d+)?)\s*(?:นิ้ว|\")", issue)
+    return (cat, (edge.group(0).lower() if edge else issue[:40]),
+            got.group(1) if got else "", f.get("correct", ""))
+
+
+def collapse_document_settings(rows):
+    """ยุบ finding ระยะขอบ/ขนาดกระดาษที่ซ้ำกันข้าม section ให้เหลือแถวเดียว
+
+    เก็บแถวแรก (ส่วนต้นเล่มที่สุด) แล้วเปลี่ยนคำค้นเป็นคำสั่งระดับเอกสาร เพราะการ
+    ชี้ไปที่ข้อความบรรทัดแรกของ section หนึ่งทำให้ผู้อ่านเข้าใจผิดว่าต้องแก้เฉพาะ
+    ตรงนั้น ทั้งที่ต้องตั้งให้ทั้งเล่ม
+    """
+    seen, out = {}, []
+    for f in rows:
+        key = _doc_setting_key(f)
+        if key is None:
+            out.append(f)
+            continue
+        if key in seen:
+            seen[key]["_sections"] = seen[key].get("_sections", 1) + 1
+            continue
+        seen[key] = f
+        out.append(f)
+    for f in out:
+        n = f.get("_sections", 1)
+        if n > 1:
+            # ตัดวลี "ของหน้าที่ขึ้นต้นด้วย …" ออก — พอกลายเป็นปัญหาระดับเอกสารแล้ว
+            # การชี้ไปหน้าเดียวทำให้เข้าใจผิดว่าแก้แค่ตรงนั้นพอ
+            issue = re.sub(r"ของหน้าที่ขึ้นต้นด้วย\s*“[^”]*”", "", f["issue"])
+            issue = re.sub(r"\s{2,}", " ", issue).strip()
+            f["issue"] = f"{issue} — ตั้งค่าแบบเดียวกันนี้ใช้กับ {n} ส่วนของเอกสาร"
+            # ล้างทั้ง search และ search_note: ถ้าเหลือ note ไว้ ตัวเรนเดอร์จะขึ้นว่า
+            # "ยังไม่มีข้อความนี้ในเล่ม" ซึ่งคนละความหมายกับ "แก้ที่การตั้งค่า"
+            f["search"] = ""
+            f.pop("search_note", None)
+            f["_doc_wide"] = True     # กัน collapse_repeats มายุบซ้ำด้วยคีย์หยาบกว่า
+            f["fix"] = (
+                "แก้ครั้งเดียวได้ทั้งเล่ม: กด Ctrl+A เลือกทั้งเอกสาร → แท็บ Layout → "
+                "Margins → Custom Margins… → ตั้งค่าตามคอลัมน์ขวา → ช่อง Apply to: "
+                "เลือก Whole document → OK "
+                f"(ถ้าเลือก Whole document ไม่ได้ ให้ทำซ้ำทีละส่วนจนครบ {n} ส่วน)")
+    return out
+
+
 def collapse_repeats(rows):
     """ยุบแถวคำผิดที่ใช้ 'คำค้นเดียวกัน + แก้เป็นค่าเดียวกัน' ให้เหลือแถวเดียว.
 
@@ -1127,6 +1195,11 @@ def collapse_repeats(rows):
     seen = {}
     out = []
     for f in rows:
+        if f.get("_doc_wide"):
+            # ยุบด้วยกฎระดับเอกสารไปแล้ว — คีย์ของฟังก์ชันนี้หยาบกว่า (ไม่แยกด้านของ
+            # ขอบกระดาษ) ถ้าปล่อยผ่านจะเอาขอบบนกับขอบซ้ายมารวมเป็นแถวเดียว
+            out.append(f)
+            continue
         key = (_collapse(f.get("search", "")), f.get("correct", ""),
                f.get("category", ""))
         if not key[0]:
@@ -1418,9 +1491,9 @@ def build_report(payload, out_path, title=None, time_note=None, source_docx=None
             f["search_ok"] = True
     # เอาเฉพาะที่ต้องแก้จริง (ไม่รวม info/ok) และเรียงตามแผ่นงานก่อนระดับความรุนแรง
     actionable = [f for f in findings if f["severity"] in ("critical", "major", "minor")]
-    template_rows = collapse_repeats(
+    template_rows = collapse_repeats(collapse_document_settings(
         sorted((f for f in actionable if f["domain"] == "template"),
-               key=_sheet_sort_key))
+               key=_sheet_sort_key)))
     spelling_rows = collapse_repeats(
         sorted((f for f in actionable if f["domain"] == "spelling"),
                key=_sheet_sort_key))

@@ -1,0 +1,240 @@
+{
+  "$schema": "TULIBS-thesis-format-rules/1.1",
+  "purpose": "ค่าเกณฑ์รูปแบบในรูปแบบที่เครื่องอ่านได้ — ใช้คู่กับ references/docx-spec.md (ฉบับอ่านด้วยตา)",
+  "authority": "อ่านจาก OOXML ของเทมเพลตทางการโดยตรง; ทุกค่าในไฟล์นี้ยืนยันซ้ำได้จาก fixtures/*.docx",
+  "verified_against": [
+    "fixtures/TULIBS_Thesis-template-Thai_rev_2024.docx",
+    "fixtures/TULIBS-Thesis-template-English_rev_2024.docx"
+  ],
+  "how_to_use": [
+    "ค่าไหนขัดกับ references/docx-spec.md ให้ยึด fixtures/ เป็นตัวตัดสิน แล้วแก้ทั้งสองไฟล์ให้ตรงกัน",
+    "ห้ามใช้ไฟล์นี้ตั้งกฎใหม่โดยไม่รัน scripts/run_tests.py — เทมเพลตทางการต้องได้ 0 finding เสมอ",
+    "ไฟล์นี้ไม่ครอบคลุมกฎเชิงความหมาย (APA7, คำสะกด, ความถูกต้องของเนื้อหาสารบัญ)"
+  ],
+  "units": {
+    "twips_per_inch": 1440,
+    "twips_per_cm": 566.929,
+    "emu_per_inch": 914400,
+    "font_size_xml_is_half_point": true
+  },
+
+  "profiles": {
+    "thai": {
+      "label": "TULIBS Thai rev.2024",
+      "sections": 21,
+      "latin_font": ["TH Sarabun New"],
+      "thai_font_cs": ["TH Sarabun New"],
+      "body_pt": 16.0,
+      "latin_body_pt": 16.0,
+      "line_spacing": 1.0,
+      "main_heading_left_in": 0.0,
+      "chapter_lvl_text": "บทที่ %1"
+    },
+    "english": {
+      "label": "TULIBS English rev.2024",
+      "sections": 21,
+      "latin_font": ["TH Sarabun New"],
+      "thai_font_cs": ["TH Sarabun New"],
+      "body_pt": 16.0,
+      "latin_body_pt": 16.0,
+      "line_spacing": 1.0,
+      "main_heading_left_in": 0.25,
+      "chapter_lvl_text": "CHAPTER %1"
+    },
+    "english-times": {
+      "label": "TULIBS English Times rev.2023",
+      "sections": 20,
+      "latin_font": ["Times New Roman"],
+      "thai_font_cs": ["TH Sarabun New"],
+      "body_pt": 16.0,
+      "latin_body_pt": 12.0,
+      "line_spacing": 1.5,
+      "main_heading_left_in": 0.25,
+      "chapter_lvl_text": "CHAPTER %1",
+      "note": "เทมเพลตคนละชุด — ห้ามเอาเกณฑ์ rev.2024 มาตัดสินไฟล์ที่ทำจากชุดนี้"
+    }
+  },
+
+  "page": {
+    "size_twips": { "w": 11906, "h": 16838, "name": "A4" },
+    "portrait_margins_twips": {
+      "top": 2160, "left": 2160, "right": 1440, "bottom": 1440,
+      "header": 1440, "footer": 706
+    },
+    "landscape_margins_twips": {
+      "top": 2160, "right": 2160, "bottom": 1440, "left": 1440,
+      "header": 1440, "footer": 706,
+      "note": "ขอบกว้าง 1.5 นิ้ว ย้ายไปอยู่ บน+ขวา เพื่อให้ขอบเข้าเล่มยังอยู่ด้านสันหลังหมุนกระดาษ"
+    },
+    "header_from_edge_alternatives_twips": [1440, 706],
+    "header_706_used_by": "หน้าคั่นภาคผนวก และหน้าที่ใช้ layout พิเศษ — ยอมรับทั้ง 1440 และ 706",
+    "appendix_divider": { "vAlign": "center", "header_twips": 706, "count_in_template": 1 },
+    "section_profile_counts_verified": {
+      "thai": { "portrait_header_1440": 18, "portrait_header_706": 2, "landscape": 1 },
+      "english": { "portrait_header_1440": 19, "portrait_header_706": 1, "landscape": 1 }
+    }
+  },
+
+  "font_sizes_pt": {
+    "cover_title": { "pt": 20, "bold": true, "align": "center" },
+    "appendices_divider": { "pt": 20, "bold": true, "align": "center", "vAlign": "center" },
+    "cover_other_lines": { "pt": 18, "bold": true, "align": "center",
+      "covers": ["โดย / BY", "ชื่อผู้เขียน", "บล็อกหลักสูตร-คณะ-ปีการศึกษา"] },
+    "chapter_heading": { "pt": 18, "bold": true, "align": "center", "style": "TU_Chapter" },
+    "front_matter_heading": { "pt": 18, "bold": true, "align": "center" },
+    "appendix_title": { "pt": 18, "bold": true, "align": "center" },
+    "main_heading": { "pt": 16, "bold": true, "align": "left" },
+    "sub_heading_all_levels": { "pt": 16, "bold": true, "align": "left" },
+    "body_text": { "pt": 16, "bold": false, "align": "left" },
+    "approval_page": { "pt": 16, "bold": false, "align": "center" },
+    "page_number": { "pt": 16, "align": "right" },
+    "allowed_sizes_pt_rev2024": [16, 18, 20],
+    "complex_script_warning": "ขนาด/ตัวหนาของข้อความไทยอยู่ที่ w:szCs / w:bCs — อ่าน w:sz / w:b แล้วสรุปคือผิดช่อง"
+  },
+
+  "indent_twips": {
+    "body_first_line": 1152,
+    "sub_heading_1": 1152,
+    "sub_heading_2": 1584,
+    "sub_heading_3": 2016,
+    "body_under_sub_1": 1714,
+    "body_under_sub_2": 2347,
+    "body_under_sub_3": 2347,
+    "main_heading_style_left": { "thai": 0, "english": 360, "english-times": 360 },
+    "main_heading_numbering": {
+      "thai": { "left": 360, "hanging": 360 },
+      "english": { "left": 720, "hanging": 360 },
+      "note": "ค่าจาก numbering.xml; ในไฟล์อังกฤษสไตล์ตั้ง left=360 ทับค่านี้อีกชั้น — เวลาตรวจให้ยึด main_heading_style_left ไม่ใช่ค่า numbering ดิบ มิฉะนั้นจะนับซ้ำเป็น 720"
+    },
+    "reference_hanging": 720,
+    "keyword_hanging": 900,
+    "tolerance_in": 0.06
+  },
+
+  "toc_indent_twips": {
+    "chapter": 0,
+    "main_heading": 720,
+    "sub_heading_1": 1008,
+    "sub_heading_2": 1440,
+    "sub_heading_3": 2016,
+    "appendix_item": 720
+  },
+
+  "spacing": {
+    "line_spacing_rev2024": "single",
+    "line_spacing_rev2023_times": 1.5,
+    "paragraph_before_twips": 0,
+    "paragraph_after_twips": 0,
+    "mechanism": "ระยะห่างมาจากย่อหน้าว่างและการเยื้องบรรทัดแรก ไม่ใช่ paragraph spacing",
+    "blank_lines": {
+      "chapter_to_first_main_heading": 1,
+      "main_heading_to_body": 1,
+      "body_to_sub_heading_1": 1,
+      "sub_heading_to_its_body": 0,
+      "body_to_next_main_heading": 1
+    }
+  },
+
+  "alignment": {
+    "cover": "center",
+    "approval_page": "center",
+    "chapter_and_front_matter_headings": "center",
+    "headings_all_levels": "left",
+    "body": "left",
+    "toc_page_number_column": "right",
+    "page_number_header": "right",
+    "justify_allowed_in": ["ช่องคำเต็มในรายการสัญลักษณ์และคำย่อ", "ย่อหน้าว่าง"],
+    "justify_rule": "เนื้อความห้าม justify — ข้อความไทยไม่มีช่องว่างระหว่างคำให้ Word เกลี่ย ผลคือช่องว่างกลางบรรทัดกว้างผิดปกติ"
+  },
+
+  "pagination": {
+    "cover": "none",
+    "english_title_page": "none",
+    "approval_page": "none",
+    "front_matter": { "format": "(N)", "position": "header", "align": "right" },
+    "main_body": { "format": "N", "position": "header", "align": "right", "restart": true },
+    "landscape": { "position": "floating textbox", "rotation": "vert", "align": "right edge" },
+    "appendices_divider": "none",
+    "font_pt": 16
+  },
+
+  "numbering": {
+    "chapter": { "auto": true, "lvl_text": { "thai": "บทที่ %1", "english": "CHAPTER %1" } },
+    "main_heading": {
+      "auto": true,
+      "lvl_text": "N.%1",
+      "one_numid_per_chapter": true,
+      "num_ids_verified": [1, 2, 3, 4, 5, 6, 7, 8],
+      "warning": "แต่ละบทต้องใช้สไตล์ TU_Main Heading_ChapterN ของบทตัวเอง — ใช้สไตล์ข้ามบททำให้เลขนับต่อจากบทเดิม (ได้ 1.7 ในบทที่ 3)",
+      "checked_by": "scripts/check_deep.py :: check_main_heading_chapter_match"
+    },
+    "sub_headings": { "auto": false, "numId": 0, "note": "พิมพ์เลขเอง" },
+    "tables_and_figures": { "scheme": "per_chapter", "example": "1.1, 1.2, 2.1" }
+  },
+
+  "tables_and_figures": {
+    "table_caption_position": "above",
+    "figure_caption_position": "below",
+    "caption_size_pt": 16,
+    "continued_table": "ทวนหัวตารางและกำกับ (ต่อ) / (Continued) ทุกครั้งที่ตารางข้ามหน้า",
+    "oversize": "ย้ายไป section แนวนอน"
+  },
+
+  "logo": { "width_emu": 914400, "height_emu": 914400, "size_in": 1.0, "align": "center" },
+
+  "required_styles": [
+    "TU_Chapter",
+    "TU_Main Heading _Chapter1",
+    "TU_Main Heading_Chapter2",
+    "TU_Main Heading_Chapter3",
+    "TU_Main Heading_Chapter4",
+    "TU_Main Heading_Chapter5",
+    "TU_Main Heading_Chapter6",
+    "TU_Main Heading_Chapter7",
+    "TU_Main Heading_Chapter8",
+    "TU_Sub-heading 1",
+    "TU_Sub-heading 2",
+    "TU_Sub-heading 3",
+    "TU_Paragraph_Normal",
+    "TU_Para_Sub-heading 1",
+    "TU_Para_Sub-heading 2",
+    "TU_Para_Sub-heading 3"
+  ],
+  "style_name_quirk": "ชื่อสไตล์บทที่ 1 มีช่องว่างเกิน: \"TU_Main Heading _Chapter1\" — เทียบชื่อแบบตรงตัวจะพลาดตัวนี้",
+
+  "document_structure_order": [
+    "ปกนอก",
+    "ปกในภาษาที่สอง",
+    "หน้าอนุมัติ (เลือก 1 จาก 2 แบบ)",
+    "บทคัดย่อภาษาไทย + คำสำคัญ",
+    "ABSTRACT + Keywords",
+    "กิตติกรรมประกาศ",
+    "สารบัญ",
+    "สารบัญตาราง (ถ้ามี)",
+    "สารบัญภาพ (ถ้ามี)",
+    "รายการสัญลักษณ์และคำย่อ (ถ้ามี)",
+    "บทที่ 1–n",
+    "รายการอ้างอิง (เลือก 1 จาก 2 แบบ)",
+    "หน้าคั่นภาคผนวก + ภาคผนวก (ถ้ามี)",
+    "ประวัติผู้เขียน"
+  ],
+
+  "known_template_leftovers": {
+    "note": "สิ่งเหล่านี้อยู่ใน**ตัวเทมเพลต**เอง อย่าตั้งกฎที่ฟ้องเทมเพลตทางการ",
+    "items": [
+      "มีหน้าอนุมัติสองแบบและรายการอ้างอิงสองแบบให้เลือก — นักศึกษาต้องลบแบบที่ไม่ใช้",
+      "table style TableGrid ยังอ้าง TH SarabunPSK เป็นค่าตกค้าง",
+      "บทที่ 7–8 ของเทมเพลตไทยมีหัวข้อย่อยที่ใช้สไตล์ Normal + จัดรูปแบบด้วยมือ"
+    ]
+  },
+
+  "most_common_student_errors": [
+    "ตั้งฟอนต์/ขนาดเฉพาะช่อง Latin ไม่ได้ตั้ง Complex Script → ข้อความไทยไม่เปลี่ยน",
+    "สลับขอบซ้าย-ขวา (ขอบกว้าง 1.5 นิ้วต้องอยู่ด้านสันเล่ม)",
+    "จัดเนื้อหาแบบ justify แทนชิดซ้าย",
+    "เยื้องหัวข้อย่อยไม่ตรงระดับ / ไม่สม่ำเสมอทั้งเล่ม",
+    "เลขหน้าส่วนนำไม่ใส่วงเล็บ หรือไม่เริ่มนับ 1 ใหม่ที่บทที่ 1",
+    "ก๊อปหัวข้อข้ามบทแล้วสไตล์ของบทเดิมติดไปด้วย",
+    "เคาะ Enter เว้นบรรทัดระหว่างย่อหน้าเนื้อความ"
+  ]
+}
